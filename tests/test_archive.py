@@ -103,3 +103,48 @@ def test_save_is_idempotent(archive: Archive):
     archive.save(make_look("dup"))
 
     assert archive.count() == 1
+
+
+def test_find_includes_candidate_at_exact_window_edge(archive: Archive):
+    """정확히 3.0℃ 차이는 포함이다. <= 를 < 로 바꾸면 실패해야 한다."""
+    archive.save(make_look("edge", temp_range=(23, 29)))  # 중앙값 26.0
+
+    found = archive.find_substitute(
+        temp=23.0, rain_ok=True, season="summer", gender=Gender.MEN
+    )
+
+    assert found is not None
+    assert found.look_id == "edge"
+
+
+def test_find_excludes_candidate_just_outside_window(archive: Archive):
+    archive.save(make_look("outside", temp_range=(23, 30)))  # 중앙값 26.5, 거리 3.5
+
+    assert archive.find_substitute(
+        temp=23.0, rain_ok=True, season="summer", gender=Gender.MEN
+    ) is None
+
+
+def test_find_excludes_look_used_exactly_four_weeks_ago(archive: Archive):
+    """정확히 28일 전 사용도 제외다. >= 를 > 로 바꾸면 실패해야 한다."""
+    archive.save(make_look("boundary"))
+    archive.mark_used("boundary", used_on=date.today() - timedelta(days=28))
+
+    assert archive.find_substitute(
+        temp=23.0, rain_ok=True, season="summer", gender=Gender.MEN
+    ) is None
+
+
+def test_find_breaks_ties_deterministically(archive: Archive):
+    """거리가 같으면 look_id 순으로 고정한다. 파이프라인 재현성에 필요하다."""
+    archive.save(make_look("bbb", temp_range=(20, 26)))  # 중앙값 23, 거리 0
+    archive.save(make_look("aaa", temp_range=(20, 26)))  # 동일 거리
+
+    picks = {
+        archive.find_substitute(
+            temp=23.0, rain_ok=True, season="summer", gender=Gender.MEN
+        ).look_id
+        for _ in range(5)
+    }
+
+    assert picks == {"aaa"}

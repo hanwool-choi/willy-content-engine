@@ -98,7 +98,7 @@ class Archive:
                  AND look_id NOT IN (
                      SELECT look_id FROM usages WHERE used_on >= ?
                  )
-               ORDER BY ABS((temp_min + temp_max) / 2.0 - ?) ASC
+               ORDER BY ABS((temp_min + temp_max) / 2.0 - ?) ASC, look_id ASC
                LIMIT 1""",
             (gender.value, season, int(rain_ok), temp, TEMP_WINDOW, cutoff, temp),
         ).fetchone()
