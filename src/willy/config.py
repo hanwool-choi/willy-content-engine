@@ -1,0 +1,42 @@
+"""설정. 비밀값은 .env에서만 읽는다."""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+# 서울 기상청 격자 좌표 / 예보구역 코드
+SEOUL_NX = 60
+SEOUL_NY = 127
+SEOUL_MID_LAND_REG = "11B00000"
+SEOUL_MID_TA_REG = "11B10101"
+
+
+@dataclass(frozen=True)
+class Settings:
+    kma_service_key: str
+    anthropic_api_key: str
+    looks_per_source: int = 20
+    output_root: Path = PROJECT_ROOT / "outputs"
+    archive_db: Path = PROJECT_ROOT / "archive" / "looks.db"
+    workspace: Path = PROJECT_ROOT / ".workspace"
+
+    @classmethod
+    def load(cls) -> "Settings":
+        return cls(
+            kma_service_key=os.environ.get("KMA_SERVICE_KEY", ""),
+            anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
+        )
+
+
+SOURCE_URLS = {
+    "musinsa_snap": "https://www.musinsa.com/snap/main/today",
+    "uniqlo_women": "https://www.uniqlo.com/kr/ko/stylingbook/stylehint/women",
+    "uniqlo_men": "https://www.uniqlo.com/kr/ko/stylingbook/stylehint/men",
+}
