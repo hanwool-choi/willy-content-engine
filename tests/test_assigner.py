@@ -83,20 +83,31 @@ def test_assign_leaves_empty_slot_rather_than_forcing_bad_match():
 
     assignment, warnings = assign(looks, winter_week)
 
-    assert any(v is None for v in assignment.values())
+    # 남성 후보는 7개 다 있지만 전부 기온이 안 맞는다. WOMEN 풀이 비어서가 아니라
+    # MAX_ACCEPTABLE 가드 때문에 비어야 한다.
+    men_slots = [v for (_d, g), v in assignment.items() if g is Gender.MEN]
+    assert len(men_slots) == 7
+    assert all(v is None for v in men_slots)
     assert WarningCode.EMPTY_SLOT in [w.code for w in warnings]
 
 
 def test_assign_prefers_globally_optimal_over_greedy():
-    """앞 요일이 좋은 룩을 선점해 뒤 요일이 무너지지 않아야 한다."""
-    week = [day(0, tmax=30, tmin=30), day(1, tmax=20, tmin=20)]
-    # cool은 양쪽에 쓸 수 있지만 hot은 더운 날에만 맞다.
-    looks = [look("cool", (18, 30)), look("hot", (29, 31))]
+    """앞 요일이 비에도 쓸 수 있는 룩을 선점하면, 비 오는 뒤 요일이 빈다.
+
+    그리디는 월요일에 rainproof(비용 0)를 가져가고 화요일에 fairweather만
+    남는데 비용 1001이라 배정 불가 -> 빈칸. 헝가리안은 전체를 보고
+    월요일에 fairweather(2), 화요일에 rainproof(0)를 놓아 둘 다 채운다.
+    """
+    week = [day(0, tmax=25, tmin=25), day(1, tmax=25, tmin=25, pop=80, sky="비")]
+    looks = [
+        look("rainproof", (20, 30), rain_ok=True),      # 중앙값 25
+        look("fairweather", (18, 28), rain_ok=False),   # 중앙값 23
+    ]
 
     assignment, _ = assign(looks, week)
 
-    assert assignment[(week[0].date, Gender.MEN)].look_id == "hot"
-    assert assignment[(week[1].date, Gender.MEN)].look_id == "cool"
+    assert assignment[(week[0].date, Gender.MEN)].look_id == "fairweather"
+    assert assignment[(week[1].date, Gender.MEN)].look_id == "rainproof"
 
 
 def test_assign_uses_archive_substitute_on_rainy_day(tmp_path: Path):
