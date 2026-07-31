@@ -36,13 +36,13 @@ def test_look_analysis_temp_median():
         layers=1,
         fabric_weight="light",
         coverage="mid",
-        temp_range=(24, 30),
+        temp_range=(23, 30),
         rain_ok=False,
         season="summer",
         style_tags=["미니멀"],
         palette=["ecru"],
     )
-    assert look.temp_median == 27.0
+    assert look.temp_median == 26.5
 
 
 def test_day_weather_is_rainy_at_threshold():
@@ -56,6 +56,21 @@ def test_day_weather_is_rainy_at_threshold():
     )
     assert DayWeather(precip_prob=60, **common).is_rainy is True
     assert DayWeather(precip_prob=59, **common).is_rainy is False
+
+
+def test_day_weather_folder_name_format():
+    day = DayWeather(
+        date=date(2026, 8, 3),
+        weekday_ko="월",
+        temp_min=24,
+        temp_max=29,
+        precip_prob=10,
+        sky="맑음",
+        resolution="detailed",
+    )
+    # Task 9가 이 문자열로 실제 폴더를 만든다. 포맷이 곧 계약이다.
+    assert day.folder_name == "08-03_월_맑음_29-24℃"
+    assert "℃" in day.folder_name  # U+2103. °C(U+00B0 + C)로 바뀌면 실패한다.
 
 
 def test_warning_code_values_are_stable():
