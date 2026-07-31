@@ -1287,7 +1287,7 @@ def test_assign_prefers_globally_optimal_over_greedy():
     assert assignment[(week[1].date, Gender.MEN)].look_id == "cool"
 
 
-def test_assign_uses_archive_fallback_for_rainy_day(tmp_path: Path):
+def test_assign_uses_archive_substitute_on_rainy_day(tmp_path: Path):
     from willy.archive import Archive
 
     archive = Archive(tmp_path / "a.db")
@@ -1299,6 +1299,25 @@ def test_assign_uses_archive_fallback_for_rainy_day(tmp_path: Path):
     assignment, warnings = assign(looks, week, archive=archive)
 
     assert assignment[(week[0].date, Gender.MEN)].look_id == "rain_backup"
+    # 우천 대체는 RAIN_SUBSTITUTE 하나만 남긴다. 한 사건에 경고 하나.
+    codes = [w.code for w in warnings]
+    assert WarningCode.RAIN_SUBSTITUTE in codes
+    assert codes.count(WarningCode.RAIN_SUBSTITUTE) == 1
+
+
+def test_assign_uses_archive_fallback_on_dry_day(tmp_path: Path):
+    """비가 안 오는 날 폴백은 ARCHIVE_FALLBACK으로 구분한다."""
+    from willy.archive import Archive
+
+    archive = Archive(tmp_path / "a.db")
+    archive.save(look("backup", (24, 30), rain_ok=False))
+
+    week = [day(0, tmax=28, tmin=22)]
+    looks = [look("way_off", (-10, -5))]  # 배정 불가 수준
+
+    assignment, warnings = assign(looks, week, archive=archive)
+
+    assert assignment[(week[0].date, Gender.MEN)].look_id == "backup"
     assert WarningCode.ARCHIVE_FALLBACK in [w.code for w in warnings]
 ```
 
@@ -1409,16 +1428,6 @@ def _assign_one_gender(
                     ),
                 )
             )
-            # ARCHIVE_FALLBACK 경고도 함께 남겨 UI가 한 코드로 필터할 수 있게 한다.
-            if code is WarningCode.RAIN_SUBSTITUTE:
-                warnings.append(
-                    Warning(
-                        code=WarningCode.ARCHIVE_FALLBACK,
-                        slot_date=day.date,
-                        gender=gender,
-                        message="아카이브 폴백 사용",
-                    )
-                )
         else:
             assignment[(day.date, gender)] = None
             warnings.append(
@@ -1465,7 +1474,7 @@ def assign(
 - [ ] **Step 4: 테스트 통과 확인**
 
 Run: `pytest tests/test_assigner.py -v`
-Expected: PASS (10개)
+Expected: PASS (11개)
 
 - [ ] **Step 5: 커밋**
 
@@ -2540,13 +2549,12 @@ from willy.models import DayWeather, Gender, LookAnalysis
 from willy.publisher.folders import PUBLISH_FILENAME, REF_FILENAME, publish
 
 
-def look(look_id: str, gender=Gender.MEN, meta=None) -> LookAnalysis:
-    analysis = LookAnalysis(
+def look(look_id: str, gender=Gender.MEN) -> LookAnalysis:
+    return LookAnalysis(
         look_id=look_id, gender=gender, sleeve="short", outer=None, layers=1,
         fabric_weight="light", coverage="mid", temp_range=(24, 30), rain_ok=False,
         season="summer", style_tags=["미니멀"], palette=["ecru"],
     )
-    return analysis
 
 
 def week_of(days: int = 7) -> list[DayWeather]:
@@ -3172,7 +3180,7 @@ from willy.web.app import create_app
 
 
 @pytest.fixture
-def client(tmp_path: Path, monkeypatch):
+def client(tmp_path: Path):
     from tests.test_pipeline import (
         FakeAnalyzer,
         FakeCollector,
