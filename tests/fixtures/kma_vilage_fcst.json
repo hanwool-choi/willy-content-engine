@@ -1,0 +1,19 @@
+{
+  "response": {
+    "body": {
+      "items": {
+        "item": [
+          {"category": "TMX", "fcstDate": "20260803", "fcstTime": "1500", "fcstValue": "29.0"},
+          {"category": "TMN", "fcstDate": "20260803", "fcstTime": "0600", "fcstValue": "24.0"},
+          {"category": "POP", "fcstDate": "20260803", "fcstTime": "1200", "fcstValue": "20"},
+          {"category": "POP", "fcstDate": "20260803", "fcstTime": "1500", "fcstValue": "30"},
+          {"category": "SKY", "fcstDate": "20260803", "fcstTime": "1200", "fcstValue": "1"},
+          {"category": "TMX", "fcstDate": "20260804", "fcstTime": "1500", "fcstValue": "26.0"},
+          {"category": "TMN", "fcstDate": "20260804", "fcstTime": "0600", "fcstValue": "22.0"},
+          {"category": "POP", "fcstDate": "20260804", "fcstTime": "1200", "fcstValue": "80"},
+          {"category": "SKY", "fcstDate": "20260804", "fcstTime": "1200", "fcstValue": "4"}
+        ]
+      }
+    }
+  }
+}

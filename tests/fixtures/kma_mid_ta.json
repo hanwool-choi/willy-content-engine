@@ -1,0 +1,15 @@
+{
+  "response": {
+    "body": {
+      "items": {
+        "item": [
+          {
+            "taMin5": 21, "taMax5": 27,
+            "taMin6": 20, "taMax6": 25,
+            "taMin7": 22, "taMax7": 30
+          }
+        ]
+      }
+    }
+  }
+}

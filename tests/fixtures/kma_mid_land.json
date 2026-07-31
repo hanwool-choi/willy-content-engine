@@ -1,0 +1,15 @@
+{
+  "response": {
+    "body": {
+      "items": {
+        "item": [
+          {
+            "rnSt5Am": 20, "rnSt5Pm": 30, "wf5Am": "맑음", "wf5Pm": "구름많음",
+            "rnSt6Am": 60, "rnSt6Pm": 70, "wf6Am": "흐리고 비", "wf6Pm": "흐리고 비",
+            "rnSt7Am": 10, "rnSt7Pm": 10, "wf7Am": "맑음", "wf7Pm": "맑음"
+          }
+        ]
+      }
+    }
+  }
+}
