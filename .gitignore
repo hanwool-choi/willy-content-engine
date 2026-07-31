@@ -6,3 +6,5 @@ venv/
 outputs/
 archive/
 .DS_Store
+.worktrees/
+.superpowers/
