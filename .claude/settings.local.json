@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l /Users/wooool/Downloads/california-trip_v1.html)",
+      "WebSearch",
+      "WebFetch(domain:www.bigsurcalifornia.org)",
+      "Bash(say -v '?')",
+      "Bash(echo \"---exit:$?---\")",
+      "Bash(say -v Yuna -r 190 -o briefing.aiff -f briefing.txt)",
+      "Bash(afconvert -f m4af -d aac -b 64000 briefing.aiff california-trip-briefing.m4a)",
+      "Bash(afinfo california-trip-briefing.m4a)",
+      "WebFetch(domain:www.fodors.com)",
+      "Bash(claude --version)",
+      "Read(//Users/wooool/.local/bin/**)",
+      "Read(//Users/wooool/.claude/**)",
+      "mcp__claude-in-chrome__list_connected_browsers",
+      "mcp__claude-in-chrome__navigate",
+      "mcp__claude-in-chrome__get_page_text",
+      "mcp__claude-in-chrome__browser_batch",
+      "mcp__claude-in-chrome__computer",
+      "Bash(curl -sS -m 15 -A 'Mozilla/5.0 \\(Macintosh; Intel Mac OS X 10_15_7\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/126.0 Safari/537.36' https://www.musinsa.com/robots.txt)",
+      "Bash(curl -sS -m 25 -A 'Mozilla/5.0 \\(Macintosh; Intel Mac OS X 10_15_7\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/126.0 Safari/537.36' -H 'Accept: application/json' -H 'Referer: https://www.stylehint.com/kr/ko' 'https://www.stylehint.com/v2/jp/outfit?result_limit=5&page=1&option_location_country=South%20Korea&option_gender=1&option_recency=1&ranking_manner=daily_ranking' -o /private/tmp/claude-501/-Users-wooool-Desktop-claude/d74e43bf-35de-451b-8b6c-19a6113517f7/scratchpad/outfit.json -w 'HTTP %{http_code} size=%{size_download}\\\\n')",
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "Bash(python3 -)",
+      "Bash(git init *)",
+      "Bash(git symbolic-ref *)",
+      "Bash(git add *)",
+      "Bash(git commit -q -m ' *)"
+    ]
+  }
+}
