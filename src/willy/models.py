@@ -83,7 +83,7 @@ class DayWeather:
     temp_max: int
     precip_prob: int
     sky: str
-    resolution: str  # "detailed" | "coarse"
+    resolution: str  # "detailed" | "coarse" | "missing"
 
     @property
     def temp_repr(self) -> float:

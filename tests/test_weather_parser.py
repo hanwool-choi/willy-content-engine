@@ -94,3 +94,31 @@ def test_merge_forecasts_fills_missing_days_with_placeholder():
     assert len(week) == 7
     assert all(d.resolution == "missing" for d in week)
     assert week[0].sky == "정보없음"
+
+
+def test_parse_short_term_falls_back_for_unmapped_sky_code():
+    """SKY 코드 2, 5 등은 매핑에 없다. KeyError가 아니라 흐림으로 떨어져야 한다."""
+    payload = {"response": {"body": {"items": {"item": [
+        {"category": "TMX", "fcstDate": "20260803", "fcstTime": "1500", "fcstValue": "29.0"},
+        {"category": "TMN", "fcstDate": "20260803", "fcstTime": "0600", "fcstValue": "24.0"},
+        {"category": "SKY", "fcstDate": "20260803", "fcstTime": "1200", "fcstValue": "2"},
+    ]}}}}
+
+    days = parse_short_term(payload, base_date=date(2026, 8, 3))
+
+    assert days[0].sky == "흐림"
+
+
+def test_parse_short_term_drops_days_before_base_date():
+    days = parse_short_term(load("kma_vilage_fcst.json"), base_date=date(2026, 8, 4))
+
+    assert [d.date for d in days] == [date(2026, 8, 4)]
+
+
+def test_parse_short_term_drops_day_without_temperature():
+    payload = {"response": {"body": {"items": {"item": [
+        {"category": "POP", "fcstDate": "20260803", "fcstTime": "1200", "fcstValue": "40"},
+        {"category": "SKY", "fcstDate": "20260803", "fcstTime": "1200", "fcstValue": "1"},
+    ]}}}}
+
+    assert parse_short_term(payload, base_date=date(2026, 8, 3)) == []
