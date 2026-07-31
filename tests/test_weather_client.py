@@ -1,9 +1,9 @@
 import json
+import logging
 from datetime import date, datetime
 from pathlib import Path
 
 import httpx
-import pytest
 
 from willy.weather.client import WeatherClient, latest_base_time
 
@@ -62,3 +62,42 @@ def test_get_week_forecast_survives_mid_term_failure():
     assert len(week) == 7
     assert week[0].resolution == "detailed"
     assert week[6].resolution == "missing"
+
+
+def test_get_week_forecast_survives_short_term_failure():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "getVilageFcst" in str(request.url):
+            return httpx.Response(500, text="서버 오류")
+        if "getMidLandFcst" in str(request.url):
+            return httpx.Response(200, json=load("kma_mid_land.json"))
+        if "getMidTa" in str(request.url):
+            return httpx.Response(200, json=load("kma_mid_ta.json"))
+        raise AssertionError(f"예상치 못한 호출: {request.url}")
+
+    client = WeatherClient(
+        service_key="dummy",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    week = client.get_week_forecast(base_date=date(2026, 8, 3))
+
+    assert len(week) == 7
+    assert week[0].resolution == "missing"  # 8/3, 단기 실패로 자리표시자
+    assert week[5].resolution == "coarse"   # 8/8, 중기가 살아 있다
+
+
+def test_service_key_never_reaches_logs(caplog):
+    """기상청 오류 응답이 와도 서비스 키가 로그에 남으면 안 된다."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="서버 오류")
+
+    client = WeatherClient(
+        service_key="SUPER_SECRET_KEY",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        week = client.get_week_forecast(base_date=date(2026, 8, 3))
+
+    assert len(week) == 7  # 실패해도 7일은 나온다
+    assert "SUPER_SECRET_KEY" not in caplog.text
+    assert "serviceKey=***" in caplog.text  # 로그 자체는 남되 값만 가려진다
