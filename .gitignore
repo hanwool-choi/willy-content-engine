@@ -8,3 +8,4 @@ archive/
 .DS_Store
 .worktrees/
 .superpowers/
+*.egg-info/
