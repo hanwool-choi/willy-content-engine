@@ -137,6 +137,48 @@ def test_finalize_writes_outputs_and_marks_usage(pipeline: Pipeline, tmp_path: P
     assert used is None
 
 
+def test_gather_skips_look_whose_analysis_fails(pipeline: Pipeline):
+    """룩 한 장의 분석 실패가 주 전체를 막지 않는다."""
+    working = pipeline.analyzer
+
+    class FlakyAnalyzer:
+        def analyze(self, raw_look):
+            if raw_look.look_id == "L3":
+                raise ValueError("분석 결과를 파싱할 수 없습니다")
+            return working.analyze(raw_look)
+
+    pipeline.analyzer = FlakyAnalyzer()
+
+    state = pipeline.gather(base_date=date(2026, 8, 3))
+
+    assert len(state.looks) == 13  # 수집 14개 중 1개만 탈락
+    assert all(look.look_id != "L3" for look in state.looks)
+
+
+def test_generate_images_skips_slot_whose_generation_fails(pipeline: Pipeline):
+    """이미지 한 장의 생성 실패가 나머지 슬롯을 막지 않는다."""
+    working = pipeline.generator
+
+    class FlakyGenerator:
+        def __init__(self):
+            self.calls = 0
+
+        def generate(self, source_image, analysis, preset, strength):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("이미지 엔진 오류")
+            return working.generate(source_image, analysis, preset, strength)
+
+    pipeline.generator = FlakyGenerator()
+
+    state = pipeline.gather(base_date=date(2026, 8, 3))
+    state = pipeline.generate_images(state)
+
+    filled = sum(1 for value in state.assignment.values() if value is not None)
+    assert filled > 1
+    assert len(state.generated) == filled - 1  # 실패한 한 장만 빠진다
+
+
 def test_full_flow_with_insufficient_looks_still_completes(tmp_path: Path):
     """룩이 모자라도 흐름은 끝까지 간다. 빈 칸 + 경고로 처리."""
     from willy.archive import Archive
