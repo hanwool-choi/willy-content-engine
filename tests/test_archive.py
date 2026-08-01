@@ -220,6 +220,40 @@ def test_source_round_trips_through_save_and_find(archive: Archive):
     assert found.source == "uniqlo_women"
 
 
+def test_archive_is_usable_from_another_thread(tmp_path: Path):
+    """FastAPI는 요청마다 다른 스레드에 배정할 수 있다.
+
+    check_same_thread=False가 없으면 sqlite3.ProgrammingError로 죽는다.
+    TestClient로는 재현되지 않아 실제 서버에서야 드러났던 버그다.
+    """
+    import threading
+
+    archive = Archive(tmp_path / "a.db")
+    archive.save(make_look("cross"))
+
+    errors: list[BaseException] = []
+    results: list[object] = []
+
+    def worker():
+        try:
+            results.append(
+                archive.find_substitute(
+                    temp=23.0, rain_ok=True, season="summer", gender=Gender.MEN
+                )
+            )
+            archive.mark_used("cross", used_on=date.today())
+            archive.close()
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    thread.join()
+
+    assert not errors, f"다른 스레드에서 실패: {errors}"
+    assert results and results[0] is not None
+
+
 def test_archive_migrates_db_missing_source_column(tmp_path: Path):
     """이전 실행이 만든 archive/looks.db에는 source 컬럼이 없다.
 

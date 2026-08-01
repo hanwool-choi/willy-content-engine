@@ -41,7 +41,10 @@ CREATE INDEX IF NOT EXISTS idx_lookup ON looks (gender, season, rain_ok);
 class Archive:
     def __init__(self, db_path: Path):
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(db_path)
+        # FastAPI가 동기 엔드포인트를 스레드풀에서 돌리기 때문에 요청마다
+        # 스레드가 달라진다. 단일 사용자 로컬 도구라 동시 쓰기가 없으므로
+        # 연결을 스레드 간에 공유해도 안전하다.
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(SCHEMA)
         self._migrate_add_source_column()
