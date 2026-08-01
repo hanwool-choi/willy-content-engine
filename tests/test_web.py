@@ -81,3 +81,17 @@ def test_finalize_requires_generate_first(client: TestClient):
 
     response = client.post("/api/finalize")
     assert response.status_code == 409
+
+
+def test_gather_resets_generated_flag(client: TestClient):
+    """다시 수집하면 이전 실행의 생성 컨펌이 남아 있으면 안 된다.
+
+    남아 있으면 사장님이 새 주차의 이미지를 보지도 않고 최종 컨펌이 통과한다.
+    """
+    client.post("/api/gather", json={"base_date": "2026-08-03"})
+    client.post("/api/generate")
+
+    # 새 주차를 수집하면 생성 단계를 다시 거쳐야 한다
+    client.post("/api/gather", json={"base_date": "2026-08-10"})
+
+    assert client.post("/api/finalize").status_code == 409
