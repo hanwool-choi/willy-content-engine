@@ -83,24 +83,50 @@ class Archive:
     def find_substitute(
         self,
         temp: float,
-        rain_ok: bool,
+        rain_ok: bool | None,
         season: str,
         gender: Gender,
         exclude_recent_weeks: int = 4,
+        exclude_ids: set[str] | None = None,
     ) -> LookAnalysis | None:
-        """조건에 맞는 룩 중 기온이 가장 가까운 것 하나."""
+        """조건에 맞는 룩 중 기온이 가장 가까운 것 하나.
+
+        rain_ok=None이면 우천 가능 여부를 따지지 않는다. 맑은 날에 비에도
+        입을 수 있는 룩을 굳이 뺄 이유가 없다.
+
+        exclude_ids는 이번 배정에서 이미 쓴 룩이다. usages 테이블은 finalize
+        시점에야 갱신되므로, 한 번의 배정 안에서는 이 인자로 중복을 막는다.
+        """
         cutoff = (date.today() - timedelta(weeks=exclude_recent_weeks)).isoformat()
 
+        clauses = ["gender = ?", "season = ?"]
+        params: list = [gender.value, season]
+
+        if rain_ok is not None:
+            clauses.append("rain_ok = ?")
+            params.append(int(rain_ok))
+
+        clauses.append("ABS((temp_min + temp_max) / 2.0 - ?) <= ?")
+        params.extend([temp, TEMP_WINDOW])
+
+        clauses.append(
+            "look_id NOT IN (SELECT look_id FROM usages WHERE used_on >= ?)"
+        )
+        params.append(cutoff)
+
+        if exclude_ids:
+            placeholders = ",".join("?" for _ in exclude_ids)
+            clauses.append(f"look_id NOT IN ({placeholders})")
+            params.extend(sorted(exclude_ids))
+
+        params.append(temp)  # ORDER BY
+
         row = self._conn.execute(
-            """SELECT * FROM looks
-               WHERE gender = ? AND season = ? AND rain_ok = ?
-                 AND ABS((temp_min + temp_max) / 2.0 - ?) <= ?
-                 AND look_id NOT IN (
-                     SELECT look_id FROM usages WHERE used_on >= ?
-                 )
-               ORDER BY ABS((temp_min + temp_max) / 2.0 - ?) ASC, look_id ASC
-               LIMIT 1""",
-            (gender.value, season, int(rain_ok), temp, TEMP_WINDOW, cutoff, temp),
+            f"""SELECT * FROM looks
+                WHERE {" AND ".join(clauses)}
+                ORDER BY ABS((temp_min + temp_max) / 2.0 - ?) ASC, look_id ASC
+                LIMIT 1""",
+            params,
         ).fetchone()
 
         return self._to_look(row) if row else None

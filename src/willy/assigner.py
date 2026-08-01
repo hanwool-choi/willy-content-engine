@@ -37,6 +37,7 @@ def _assign_one_gender(
     archive: Archive | None,
     assignment: Assignment,
     warnings: list[Warning],
+    used_ids: set[str],
 ) -> None:
     pool = [look for look in looks if look.gender == gender]
 
@@ -66,6 +67,7 @@ def _assign_one_gender(
 
         if picked is not None and matrix[i][col] <= MAX_ACCEPTABLE:
             assignment[(day.date, gender)] = picked
+            used_ids.add(picked.look_id)
             continue
 
         # 배정 실패 -> 아카이브 폴백
@@ -73,13 +75,15 @@ def _assign_one_gender(
         if archive is not None:
             substitute = archive.find_substitute(
                 temp=day.temp_repr,
-                rain_ok=day.is_rainy,
+                rain_ok=True if day.is_rainy else None,
                 season=pool[0].season,
                 gender=gender,
+                exclude_ids=used_ids,
             )
 
         if substitute is not None:
             assignment[(day.date, gender)] = substitute
+            used_ids.add(substitute.look_id)
             code = (
                 WarningCode.RAIN_SUBSTITUTE if day.is_rainy
                 else WarningCode.ARCHIVE_FALLBACK
@@ -118,6 +122,7 @@ def assign(
     """전역 최적 배정. 맞는 룩이 없으면 억지로 채우지 않고 비워둔다."""
     assignment: Assignment = {}
     warnings: list[Warning] = []
+    used_ids: set[str] = set()
 
     required = len(week) * 2
     if len(looks) < required:
@@ -131,6 +136,6 @@ def assign(
         )
 
     for gender in (Gender.MEN, Gender.WOMEN):
-        _assign_one_gender(looks, week, gender, archive, assignment, warnings)
+        _assign_one_gender(looks, week, gender, archive, assignment, warnings, used_ids)
 
     return assignment, warnings

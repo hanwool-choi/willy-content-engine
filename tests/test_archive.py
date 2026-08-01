@@ -135,6 +135,35 @@ def test_find_excludes_look_used_exactly_four_weeks_ago(archive: Archive):
     ) is None
 
 
+def test_find_with_rain_ok_none_ignores_rain_constraint(archive: Archive):
+    """rain_ok=None이면 우천 가능 룩도 후보다. 맑은 날 폴백이 이 경로를 쓴다."""
+    archive.save(make_look("rain_capable", rain_ok=True))
+
+    assert archive.find_substitute(
+        temp=23.0, rain_ok=None, season="summer", gender=Gender.MEN
+    ) is not None
+    # rain_ok=False를 명시하면 같은 룩이 걸러진다
+    assert archive.find_substitute(
+        temp=23.0, rain_ok=False, season="summer", gender=Gender.MEN
+    ) is None
+
+
+def test_find_honours_exclude_ids(archive: Archive):
+    archive.save(make_look("first"))
+    archive.save(make_look("second"))
+
+    first = archive.find_substitute(
+        temp=23.0, rain_ok=True, season="summer", gender=Gender.MEN
+    )
+    second = archive.find_substitute(
+        temp=23.0, rain_ok=True, season="summer", gender=Gender.MEN,
+        exclude_ids={first.look_id},
+    )
+
+    assert second is not None
+    assert second.look_id != first.look_id
+
+
 def test_find_breaks_ties_deterministically(archive: Archive):
     """거리가 같으면 look_id 순으로 고정한다. 파이프라인 재현성에 필요하다."""
     archive.save(make_look("bbb", temp_range=(20, 26)))  # 중앙값 23, 거리 0

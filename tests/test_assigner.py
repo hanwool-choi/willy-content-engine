@@ -142,3 +142,36 @@ def test_assign_uses_archive_fallback_on_dry_day(tmp_path: Path):
 
     assert assignment[(week[0].date, Gender.MEN)].look_id == "backup"
     assert WarningCode.ARCHIVE_FALLBACK in [w.code for w in warnings]
+
+
+def test_assign_never_reuses_the_same_archive_look_twice(tmp_path: Path):
+    """두 날이 모두 폴백으로 떨어져도 같은 룩이 두 번 나오면 안 된다."""
+    from willy.archive import Archive
+
+    archive = Archive(tmp_path / "a.db")
+    archive.save(look("backup1", (24, 30)))
+    archive.save(look("backup2", (24, 30)))
+
+    week = [day(0), day(1)]
+    looks = [look("way_off1", (-10, -5)), look("way_off2", (-10, -5))]
+
+    assignment, _ = assign(looks, week, archive=archive)
+
+    picked = [assignment[(d.date, Gender.MEN)].look_id for d in week]
+    assert len(set(picked)) == 2, f"같은 룩이 두 번 배정됨: {picked}"
+
+
+def test_assign_dry_day_fallback_accepts_rain_capable_look(tmp_path: Path):
+    """맑은 날 폴백은 우천 가능 룩도 받는다."""
+    from willy.archive import Archive
+
+    archive = Archive(tmp_path / "a.db")
+    archive.save(look("rain_capable", (24, 30), rain_ok=True))
+
+    week = [day(0)]
+    looks = [look("way_off", (-10, -5))]
+
+    assignment, warnings = assign(looks, week, archive=archive)
+
+    assert assignment[(week[0].date, Gender.MEN)].look_id == "rain_capable"
+    assert WarningCode.ARCHIVE_FALLBACK in [w.code for w in warnings]
