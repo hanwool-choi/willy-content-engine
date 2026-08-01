@@ -1,0 +1,24 @@
+concept_id: v1
+model:
+  men:
+    age: "30대 초반"
+    build: "보통"
+    height: "175cm"
+    hair: null
+    face_ref: null
+  women:
+    age: "30대 초반"
+    build: "보통"
+    height: "163cm"
+    hair: null
+    face_ref: null
+render:
+  art_style: null
+  background: null
+  lighting: null
+  aspect_ratio: "4:5"
+  strength: 0.65
+negative:
+  - "손가락 왜곡"
+  - "텍스트"
+  - "로고"
