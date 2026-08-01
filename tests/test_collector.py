@@ -1,0 +1,142 @@
+from pathlib import Path
+
+import pytest
+
+from willy.collector.collector import Collector
+from willy.collector.sources import SourceSpec
+
+
+class FakeElement:
+    def __init__(self, image_url: str | None, link: str | None = None):
+        self._image = image_url
+        self._link = link
+        self.screenshot_calls: list[Path] = []
+
+    def query_selector(self, selector: str):
+        if selector == "img":
+            return FakeImage(self._image) if self._image else None
+        if selector == "a":
+            return FakeLink(self._link) if self._link else None
+        return None
+
+    def screenshot(self, path: str):
+        Path(path).write_bytes(b"\xff\xd8\xff\xe0screenshot")
+        self.screenshot_calls.append(Path(path))
+
+
+class FakeImage:
+    def __init__(self, url: str):
+        self._url = url
+
+    def get_attribute(self, name: str):
+        return self._url if name == "src" else None
+
+
+class FakeLink:
+    def __init__(self, href: str):
+        self._href = href
+
+    def get_attribute(self, name: str):
+        return self._href if name == "href" else None
+
+
+class FakePage:
+    def __init__(self, elements: list[FakeElement]):
+        self._elements = elements
+        self.visited: list[str] = []
+
+    def goto(self, url: str, **kwargs):
+        self.visited.append(url)
+
+    def wait_for_timeout(self, ms: int):
+        pass
+
+    def mouse_wheel(self, dx: int, dy: int):
+        pass
+
+    def query_selector_all(self, selector: str):
+        return self._elements
+
+
+def spec(name="musinsa_snap") -> SourceSpec:
+    return SourceSpec(
+        name=name, url="https://example.test/", card_selector=".card",
+        image_selector="img", link_selector="a", scroll_rounds=1,
+    )
+
+
+def make_collector(tmp_path: Path, page: FakePage, downloader=None) -> Collector:
+    return Collector(
+        workspace=tmp_path,
+        page_factory=lambda: page,
+        downloader=downloader or (lambda url, dest: dest.write_bytes(b"\xff\xd8original")),
+    )
+
+
+def test_collect_downloads_original_when_url_present(tmp_path: Path):
+    page = FakePage([FakeElement("https://cdn.test/a.jpg", "https://x.test/1")])
+    looks = make_collector(tmp_path, page).collect([spec()], limit_per_source=5)
+
+    assert len(looks) == 1
+    assert looks[0].capture_method == "original_url"
+    assert looks[0].image_path.read_bytes() == b"\xff\xd8original"
+    assert looks[0].source_url == "https://x.test/1"
+
+
+def test_collect_falls_back_to_screenshot_when_no_image_url(tmp_path: Path):
+    page = FakePage([FakeElement(None)])
+    looks = make_collector(tmp_path, page).collect([spec()], limit_per_source=5)
+
+    assert looks[0].capture_method == "screenshot"
+    assert looks[0].image_path.exists()
+
+
+def test_collect_falls_back_to_screenshot_when_download_fails(tmp_path: Path):
+    def failing(url, dest):
+        raise OSError("네트워크 오류")
+
+    page = FakePage([FakeElement("https://cdn.test/a.jpg")])
+    looks = make_collector(tmp_path, page, downloader=failing).collect(
+        [spec()], limit_per_source=5
+    )
+
+    assert looks[0].capture_method == "screenshot"
+
+
+def test_collect_respects_limit(tmp_path: Path):
+    page = FakePage([FakeElement(f"https://cdn.test/{i}.jpg") for i in range(30)])
+    looks = make_collector(tmp_path, page).collect([spec()], limit_per_source=20)
+
+    assert len(looks) == 20
+
+
+def test_collect_continues_when_one_source_fails(tmp_path: Path):
+    """한 소스가 죽어도 나머지는 수집한다."""
+
+    class ExplodingPage(FakePage):
+        def goto(self, url: str, **kwargs):
+            if "bad" in url:
+                raise RuntimeError("페이지 로드 실패")
+            super().goto(url, **kwargs)
+
+    page = ExplodingPage([FakeElement("https://cdn.test/a.jpg")])
+    bad = SourceSpec(
+        name="bad", url="https://bad.test/", card_selector=".card",
+        image_selector="img", scroll_rounds=1,
+    )
+
+    looks = make_collector(tmp_path, page).collect([bad, spec()], limit_per_source=5)
+
+    assert len(looks) == 1
+    assert looks[0].source == "musinsa_snap"
+
+
+def test_add_manual_from_local_file(tmp_path: Path):
+    src = tmp_path / "my.jpg"
+    src.write_bytes(b"\xff\xd8manual")
+
+    look = make_collector(tmp_path, FakePage([])).add_manual(str(src))
+
+    assert look.source == "manual"
+    assert look.capture_method == "original_url"
+    assert look.image_path.read_bytes() == b"\xff\xd8manual"
