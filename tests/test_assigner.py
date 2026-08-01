@@ -9,7 +9,8 @@ from willy.models import DayWeather, Gender, LookAnalysis, WarningCode
 
 def look(look_id: str, temp_range, rain_ok=True, gender=Gender.MEN) -> LookAnalysis:
     return LookAnalysis(
-        look_id=look_id, gender=gender, sleeve="short", outer=None, layers=1,
+        look_id=look_id, source="musinsa_snap", gender=gender, sleeve="short",
+        outer=None, layers=1,
         fabric_weight="light", coverage="mid", temp_range=temp_range,
         rain_ok=rain_ok, season="summer", style_tags=[], palette=[],
         image_path=Path(f"/tmp/{look_id}.jpg"),

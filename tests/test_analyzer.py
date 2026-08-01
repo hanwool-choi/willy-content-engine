@@ -83,6 +83,18 @@ def test_analyze_maps_fields(image: Path):
     assert result.image_path == image
 
 
+def test_analyze_carries_source_from_raw_look(image: Path):
+    """분석 결과의 출처는 모델이 아니라 수집 시점의 RawLook.source에서 온다.
+
+    이걸 놓치면 출처 배지, 소스별 집계, 아카이브 재사용 기록이 전부 깨진다.
+    """
+    analyzer = LookAnalyzer(api_key="k", client=FakeClient(VALID))
+
+    result = analyzer.analyze(raw(image))
+
+    assert result.source == "musinsa_snap"
+
+
 def test_analyze_derives_season_not_from_model(image: Path):
     """모델이 계절을 말해줘도 무시하고 기온에서 파생한다.
 

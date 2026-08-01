@@ -9,9 +9,11 @@ from willy.models import Gender, LookAnalysis
 
 
 def make_look(look_id: str, temp_range=(20, 26), rain_ok=True,
-              season="summer", gender=Gender.MEN) -> LookAnalysis:
+              season="summer", gender=Gender.MEN,
+              source="musinsa_snap") -> LookAnalysis:
     return LookAnalysis(
         look_id=look_id,
+        source=source,
         gender=gender,
         sleeve="short",
         outer=None,
@@ -205,3 +207,47 @@ def test_close_releases_the_connection(tmp_path: Path):
 
     with pytest.raises(sqlite3.ProgrammingError):
         archive.count()
+
+
+def test_source_round_trips_through_save_and_find(archive: Archive):
+    archive.save(make_look("src_look", source="uniqlo_women"))
+
+    found = archive.find_substitute(
+        temp=23.0, rain_ok=True, season="summer", gender=Gender.MEN
+    )
+
+    assert found is not None
+    assert found.source == "uniqlo_women"
+
+
+def test_archive_migrates_db_missing_source_column(tmp_path: Path):
+    """이전 실행이 만든 archive/looks.db에는 source 컬럼이 없다.
+
+    CREATE TABLE IF NOT EXISTS는 기존 테이블을 건드리지 않으므로, __init__이
+    스스로 ALTER TABLE로 보강해야 한다. 이걸 빼먹으면 사장님의 둘째 주에
+    바로 터진다.
+    """
+    db_path = tmp_path / "looks.db"
+
+    # 먼저 정상적으로 만든 뒤, 마치 구버전 스키마인 것처럼 컬럼을 제거한다.
+    bootstrap = Archive(db_path)
+    bootstrap.save(make_look("pre_existing"))
+    bootstrap._conn.execute("ALTER TABLE looks DROP COLUMN source")
+    bootstrap._conn.commit()
+    bootstrap.close()
+
+    # 컬럼 없는 상태에서 새로 여는 것이 마이그레이션 가드가 검증할 지점이다.
+    migrated = Archive(db_path)
+
+    # 새 컬럼이 생기고, 기존 행도 기본값으로 채워져 조회가 계속 동작해야 한다.
+    columns = {row[1] for row in migrated._conn.execute("PRAGMA table_info(looks)")}
+    assert "source" in columns
+
+    migrated.save(make_look("post_migration", source="uniqlo_men"))
+    found = migrated.find_substitute(
+        temp=23.0, rain_ok=True, season="summer", gender=Gender.MEN,
+        exclude_ids={"pre_existing"},
+    )
+    assert found is not None
+    assert found.look_id == "post_migration"
+    assert found.source == "uniqlo_men"

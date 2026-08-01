@@ -10,7 +10,8 @@ from willy.publisher.folders import PUBLISH_STEM, REF_STEM, publish
 
 def look(look_id: str, gender=Gender.MEN) -> LookAnalysis:
     return LookAnalysis(
-        look_id=look_id, gender=gender, sleeve="short", outer=None, layers=1,
+        look_id=look_id, source="musinsa_snap", gender=gender, sleeve="short",
+        outer=None, layers=1,
         fabric_weight="light", coverage="mid", temp_range=(24, 30), rain_ok=False,
         season="summer", style_tags=["미니멀"], palette=["ecru"],
     )

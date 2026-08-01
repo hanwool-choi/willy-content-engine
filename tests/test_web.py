@@ -172,7 +172,12 @@ def test_style_tags_are_escaped_in_the_page(client: TestClient):
     page = client.get("/").text
 
     assert "const esc =" in page, "이스케이프 헬퍼가 없다"
-    for expression in ("p.style_tags.join", "s.style_tags.join", "w.message"):
+    for expression in (
+        "p.style_tags.join",
+        "s.style_tags.join",
+        "w.message",
+        "sourceLabel(p.source)",
+    ):
         occurrences = [
             line for line in page.splitlines() if expression in line
         ]
@@ -180,6 +185,33 @@ def test_style_tags_are_escaped_in_the_page(client: TestClient):
         assert all("esc(" in line for line in occurrences), (
             f"{expression} 가 이스케이프되지 않았다: {occurrences}"
         )
+
+
+def test_pool_source_badges_and_breakdown_render(client: TestClient):
+    """카드 배지와 소스별 집계 요약이 실제 화면 데이터로 채워지는지 확인한다."""
+    page = client.get("/").text
+
+    assert "SOURCE_LABELS" in page
+    assert "무신사" in page and "유니클로W" in page and "유니클로M" in page and "직접추가" in page
+    assert 'id="pool-sources"' in page
+
+
+def test_pool_entries_carry_source(client: TestClient):
+    """출처 배지와 소스별 집계는 payload의 source 필드에서 나온다."""
+    body = client.post("/api/gather", json={"base_date": "2026-08-03"}).json()
+
+    assert body["pool"], "수집된 룩 목록이 비어 있다"
+    assert all(entry["source"] for entry in body["pool"])
+    # FakeCollector는 모든 룩을 musinsa_snap으로 수집한다.
+    assert {entry["source"] for entry in body["pool"]} == {"musinsa_snap"}
+
+
+def test_filled_slots_carry_source(client: TestClient):
+    body = client.post("/api/gather", json={"base_date": "2026-08-03"}).json()
+
+    filled = [s for s in body["slots"] if not s["empty"]]
+    assert filled
+    assert all(s["source"] for s in filled)
 
 
 def test_regather_closes_the_previous_archive(client: TestClient):

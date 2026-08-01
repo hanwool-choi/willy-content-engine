@@ -14,7 +14,8 @@ PRESET_PATH = Path(__file__).parents[1] / "presets" / "concept_v1.yaml"
 
 def look() -> LookAnalysis:
     return LookAnalysis(
-        look_id="L1", gender=Gender.MEN, sleeve="short", outer="shirt_jacket",
+        look_id="L1", source="musinsa_snap", gender=Gender.MEN,
+        sleeve="short", outer="shirt_jacket",
         layers=2, fabric_weight="light", coverage="mid", temp_range=(17, 23),
         rain_ok=False, season="fall", style_tags=["미니멀", "워크웨어"],
         palette=["charcoal", "ecru"], image_path=Path("/tmp/L1.jpg"),

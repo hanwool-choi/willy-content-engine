@@ -46,6 +46,7 @@ class FakeAnalyzer:
         index = int(raw_look.look_id[1:])
         return LookAnalysis(
             look_id=raw_look.look_id,
+            source=raw_look.source,
             gender=Gender.MEN if index % 2 == 0 else Gender.WOMEN,
             sleeve="short", outer=None, layers=1, fabric_weight="light",
             coverage="mid", temp_range=(24, 30), rain_ok=True, season="summer",

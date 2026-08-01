@@ -56,6 +56,7 @@ class RawLook:
 @dataclass
 class LookAnalysis:
     look_id: str
+    source: str  # "musinsa_snap" | "uniqlo_women" | "uniqlo_men" | "manual"
     gender: Gender
     sleeve: str  # "sleeveless" | "short" | "long"
     outer: str | None

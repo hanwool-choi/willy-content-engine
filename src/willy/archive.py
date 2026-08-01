@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS looks (
     season        TEXT NOT NULL,
     style_tags    TEXT NOT NULL,
     palette       TEXT NOT NULL,
-    image_path    TEXT
+    image_path    TEXT,
+    source        TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS usages (
@@ -43,14 +44,28 @@ class Archive:
         self._conn = sqlite3.connect(db_path)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(SCHEMA)
+        self._migrate_add_source_column()
         self._conn.commit()
+
+    def _migrate_add_source_column(self) -> None:
+        """이전 실행의 archive/looks.db에는 source 컬럼이 없을 수 있다.
+
+        CREATE TABLE IF NOT EXISTS는 이미 존재하는 테이블을 건드리지 않으므로,
+        기존 DB를 여는 두 번째 주차부터 여기서 직접 보강해야 한다.
+        """
+        columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(looks)")}
+        if "source" not in columns:
+            self._conn.execute(
+                "ALTER TABLE looks ADD COLUMN source TEXT NOT NULL DEFAULT ''"
+            )
 
     def save(self, look: LookAnalysis) -> None:
         self._conn.execute(
             """INSERT OR REPLACE INTO looks
                (look_id, gender, sleeve, outer, layers, fabric_weight, coverage,
-                temp_min, temp_max, rain_ok, season, style_tags, palette, image_path)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                temp_min, temp_max, rain_ok, season, style_tags, palette, image_path,
+                source)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 look.look_id,
                 look.gender.value,
@@ -66,6 +81,7 @@ class Archive:
                 json.dumps(look.style_tags, ensure_ascii=False),
                 json.dumps(look.palette, ensure_ascii=False),
                 str(look.image_path) if look.image_path else None,
+                look.source,
             ),
         )
         self._conn.commit()
@@ -145,6 +161,7 @@ class Archive:
     def _to_look(row: sqlite3.Row) -> LookAnalysis:
         return LookAnalysis(
             look_id=row["look_id"],
+            source=row["source"],
             gender=Gender(row["gender"]),
             sleeve=row["sleeve"],
             outer=row["outer"],

@@ -133,6 +133,7 @@ class LookAnalyzer:
         median = (lo + hi) / 2
         return LookAnalysis(
             look_id=raw_look.look_id,
+            source=raw_look.source,
             gender=gender,
             sleeve=data["sleeve"],
             outer=data.get("outer"),

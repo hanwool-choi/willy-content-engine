@@ -29,6 +29,7 @@ def _serialize(state: PipelineState) -> dict:
         "pool": [
             {
                 "look_id": look.look_id,
+                "source": look.source,
                 "gender": look.gender.value,
                 "temp_range": list(look.temp_range),
                 "rain_ok": look.rain_ok,
@@ -57,6 +58,7 @@ def _serialize(state: PipelineState) -> dict:
                 "date": slot_date.isoformat(),
                 "gender": gender.value,
                 "look_id": look.look_id if look else None,
+                "source": look.source if look else None,
                 "temp_range": list(look.temp_range) if look else None,
                 "style_tags": look.style_tags if look else [],
                 "empty": look is None,

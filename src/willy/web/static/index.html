@@ -18,6 +18,10 @@
   .card { border: 1px solid #ddd; border-radius: 8px; padding: 6px; font-size: 11px; }
   .card.unused { opacity: .45; }
   .card .badge { float: right; font-size: 10px; }
+  .card .source-tag {
+    display: inline-block; font-size: 9px; color: #4338ca; background: #eef2ff;
+    border-radius: 4px; padding: 1px 4px; margin-bottom: 2px;
+  }
   img.thumb {
     width: 100%; aspect-ratio: 3 / 4; object-fit: cover;
     border-radius: 6px; background: #f3f4f6; display: block; margin-bottom: 4px;
@@ -42,7 +46,7 @@
 <div id="warnings"></div>
 <div class="week" id="week"></div>
 
-<h2 id="pool-title" hidden>수집된 룩 <span class="muted" id="pool-count"></span></h2>
+<h2 id="pool-title" hidden>수집된 룩 <span class="muted" id="pool-count"></span> <span class="muted" id="pool-sources"></span></h2>
 <div class="pool" id="pool"></div>
 
 <h2 id="board-title" hidden>요일별 배정</h2>
@@ -61,6 +65,14 @@
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
     })[c]);
 
+  const SOURCE_LABELS = {
+    musinsa_snap: "무신사",
+    uniqlo_women: "유니클로W",
+    uniqlo_men: "유니클로M",
+    manual: "직접추가",
+  };
+  const sourceLabel = (source) => SOURCE_LABELS[source] ?? source;
+
   function render(data) {
     $("week").innerHTML = data.week.map((d) => `
       <div class="day ${d.is_rainy ? "rainy" : ""} ${d.resolution === "coarse" ? "coarse" : ""}">
@@ -74,10 +86,22 @@
     $("pool-count").textContent = pool.length
       ? `${pool.length}장 중 ${pool.filter((p) => p.assigned).length}장 배정됨`
       : "";
+    if (pool.length) {
+      const bySource = {};
+      for (const p of pool) {
+        bySource[p.source] = (bySource[p.source] || 0) + 1;
+      }
+      $("pool-sources").innerHTML = Object.entries(bySource)
+        .map(([source, n]) => `${esc(sourceLabel(source))} ${esc(n)}`)
+        .join(" · ");
+    } else {
+      $("pool-sources").innerHTML = "";
+    }
     $("pool").innerHTML = pool.map((p) => `
       <div class="card ${p.assigned ? "" : "unused"}">
         <img class="thumb" src="${esc(p.image_url)}" alt="${esc(p.look_id)}" loading="lazy" />
         <span class="badge">${p.rain_ok ? "☔" : ""}</span>
+        <span class="source-tag">${esc(sourceLabel(p.source))}</span><br />
         <b>${esc(p.look_id)}</b> · ${esc(p.gender)}<br />
         ${esc(p.temp_range.join("~"))}℃<br />
         ${esc(p.style_tags.join(", "))}

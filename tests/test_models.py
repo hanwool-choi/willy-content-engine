@@ -30,6 +30,7 @@ def test_iso_week_label_first_week_of_month():
 def test_look_analysis_temp_median():
     look = LookAnalysis(
         look_id="a",
+        source="musinsa_snap",
         gender=Gender.MEN,
         sleeve="short",
         outer=None,
