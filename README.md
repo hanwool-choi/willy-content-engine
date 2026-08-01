@@ -35,8 +35,12 @@ cp .env.example .env
 
 `.env` 에 키를 채운다:
 
-- `KMA_SERVICE_KEY` — 공공데이터포털 기상청 단기예보/중기예보 서비스 키
+- `KMA_SERVICE_KEY` — 공공데이터포털 기상청 단기예보/중기예보 서비스 키 (선택)
 - `ANTHROPIC_API_KEY` — 룩 분석용 Claude API 키
+
+`KMA_SERVICE_KEY`가 비어 있으면 날씨는 자동으로 Open-Meteo로 대체된다. 키 등록
+없이 바로 실행 가능하다. 기상청은 국내 지역 조건 정확도가 더 높고, Open-Meteo는
+등록 없이 즉시 쓸 수 있다는 트레이드오프가 있다.
 
 ## 실행
 

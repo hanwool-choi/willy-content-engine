@@ -17,6 +17,10 @@ SEOUL_NY = 127
 SEOUL_MID_LAND_REG = "11B00000"
 SEOUL_MID_TA_REG = "11B10101"
 
+# 서울 위경도 (Open-Meteo용, 키 불필요)
+SEOUL_LAT = 37.5665
+SEOUL_LON = 126.978
+
 
 @dataclass(frozen=True)
 class Settings:
