@@ -8,9 +8,15 @@ from willy.collector.sources import SourceSpec
 
 
 class FakeElement:
-    def __init__(self, image_url: str | None, link: str | None = None):
+    def __init__(
+        self,
+        image_url: str | None,
+        link: str | None = None,
+        own_href: str | None = None,
+    ):
         self._image = image_url
         self._link = link
+        self._own_href = own_href
         self.screenshot_calls: list[Path] = []
 
     def query_selector(self, selector: str):
@@ -19,6 +25,10 @@ class FakeElement:
         if selector == "a":
             return FakeLink(self._link) if self._link else None
         return None
+
+    def get_attribute(self, name: str):
+        """카드 자체가 링크인 경우(유니클로 스타일링북)를 위한 것."""
+        return self._own_href if name == "href" else None
 
     def screenshot(self, path: str):
         Path(path).write_bytes(b"\xff\xd8\xff\xe0screenshot")
@@ -41,18 +51,26 @@ class FakeLink:
         return self._href if name == "href" else None
 
 
+class FakeMouse:
+    """Playwright의 page.mouse. 실물은 page.mouse.wheel()이지 page.mouse_wheel()이 아니다."""
+
+    def __init__(self):
+        self.wheels: list[tuple[int, int]] = []
+
+    def wheel(self, dx: int, dy: int):
+        self.wheels.append((dx, dy))
+
+
 class FakePage:
     def __init__(self, elements: list[FakeElement]):
         self._elements = elements
         self.visited: list[str] = []
+        self.mouse = FakeMouse()
 
     def goto(self, url: str, **kwargs):
         self.visited.append(url)
 
     def wait_for_timeout(self, ms: int):
-        pass
-
-    def mouse_wheel(self, dx: int, dy: int):
         pass
 
     def query_selector_all(self, selector: str):
@@ -221,3 +239,40 @@ def test_collect_closes_the_page_even_when_a_source_explodes(tmp_path: Path):
     collector.collect([spec()], limit_per_source=5)
 
     assert closed == [True]
+
+
+def test_fake_page_matches_the_real_playwright_api():
+    """가짜가 실제 API와 다르면 테스트는 아무것도 검증하지 못한다.
+
+    page.mouse_wheel()은 Playwright에 없다. 실물은 page.mouse.wheel()이다.
+    이 테스트가 없던 동안 수집기는 존재하지 않는 메서드를 부르고 있었고
+    10개 테스트가 전부 통과했다.
+    """
+    from playwright.sync_api import Mouse, Page
+
+    assert not hasattr(Page, "mouse_wheel"), "Playwright에 없는 메서드다"
+    assert hasattr(Mouse, "wheel")
+    assert hasattr(Page, "goto")
+    assert hasattr(Page, "query_selector_all")
+    assert hasattr(Page, "wait_for_timeout")
+
+
+def test_collect_scrolls_to_trigger_lazy_loading(tmp_path: Path):
+    """지연 로딩 사이트라 스크롤하지 않으면 카드가 안 붙는다."""
+    page = FakePage([FakeElement("https://cdn.test/a.jpg")])
+    make_collector(tmp_path, page).collect([spec()], limit_per_source=5)
+
+    assert page.mouse.wheels, "스크롤을 한 번도 하지 않았다"
+
+
+def test_collect_uses_the_cards_own_href_when_it_is_the_link(tmp_path: Path):
+    """유니클로 스타일링북은 <a>가 카드를 감싼다. link_selector로는 못 잡는다."""
+    page = FakePage([FakeElement("https://cdn.test/a.jpg", own_href="/stylingbook/1")])
+    uniqlo = SourceSpec(
+        name="uniqlo_women", url="https://example.test/",
+        card_selector="a", image_selector="img", link_selector=None, scroll_rounds=1,
+    )
+
+    looks = make_collector(tmp_path, page).collect([uniqlo], limit_per_source=5)
+
+    assert looks[0].source_url == "/stylingbook/1"

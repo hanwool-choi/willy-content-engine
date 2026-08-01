@@ -29,16 +29,26 @@ SOURCE_SPECS: dict[str, SourceSpec] = {
     "uniqlo_women": SourceSpec(
         name="uniqlo_women",
         url=SOURCE_URLS["uniqlo_women"],
-        card_selector="[class*='styling'] li, [class*='Card'], article",
-        image_selector="img",
-        link_selector="a",
+        # 각 룩은 상세로 가는 <a>가 감싸고 그 안에 fr-ec-tile 버튼과 이미지가 있다.
+        # 카드 자체가 링크라 link_selector로는 잡히지 않고, 수집기가 카드의
+        # href를 폴백으로 읽는다.
+        # :has(...)로 실제 룩 카드만 남긴다. 이게 없으면 /stylingbook/stylehint/women
+        # 같은 네비게이션 링크까지 카드로 잡혀 로고 아이콘이 수집된다.
+        card_selector="a[href*='/stylingbook/stylehint/']:has(img.fr-ec-image__img)",
+        image_selector="img.fr-ec-image__img, img",
+        link_selector=None,
     ),
     "uniqlo_men": SourceSpec(
         name="uniqlo_men",
         url=SOURCE_URLS["uniqlo_men"],
-        card_selector="[class*='styling'] li, [class*='Card'], article",
-        image_selector="img",
-        link_selector="a",
+        # 각 룩은 상세로 가는 <a>가 감싸고 그 안에 fr-ec-tile 버튼과 이미지가 있다.
+        # 카드 자체가 링크라 link_selector로는 잡히지 않고, 수집기가 카드의
+        # href를 폴백으로 읽는다.
+        # :has(...)로 실제 룩 카드만 남긴다. 이게 없으면 /stylingbook/stylehint/women
+        # 같은 네비게이션 링크까지 카드로 잡혀 로고 아이콘이 수집된다.
+        card_selector="a[href*='/stylingbook/stylehint/']:has(img.fr-ec-image__img)",
+        image_selector="img.fr-ec-image__img, img",
+        link_selector=None,
     ),
 }
 

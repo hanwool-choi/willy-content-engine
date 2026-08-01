@@ -64,12 +64,15 @@ class Collector:
     def _collect_one(
         self, page, spec: SourceSpec, limit: int
     ) -> list[RawLook]:
-        page.goto(spec.url, wait_until="networkidle")
-        page.wait_for_timeout(2000)
+        # networkidle을 쓰면 안 된다. 세 소스 모두 애널리틱스·소켓 연결이
+        # 계속 살아 있어 네트워크가 조용해지는 순간이 오지 않고, goto가
+        # 타임아웃으로 끝난다. 실측으로 확인했다.
+        page.goto(spec.url, wait_until="domcontentloaded")
+        page.wait_for_timeout(3000)
 
         # 지연 로딩 대응
         for _ in range(spec.scroll_rounds):
-            page.mouse_wheel(0, 4000)
+            page.mouse.wheel(0, 4000)
             page.wait_for_timeout(1200)
 
         cards = page.query_selector_all(spec.card_selector)[:limit]
@@ -101,6 +104,9 @@ class Collector:
                 link_el = card.query_selector(spec.link_selector)
                 if link_el is not None:
                     source_url = link_el.get_attribute("href")
+            if source_url is None:
+                # 카드 자체가 링크인 경우가 있다 (유니클로 스타일링북).
+                source_url = card.get_attribute("href")
 
             looks.append(
                 RawLook(
