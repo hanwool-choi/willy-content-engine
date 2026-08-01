@@ -5,6 +5,7 @@ venv/
 .env
 outputs/
 archive/
+.workspace/
 .DS_Store
 .worktrees/
 .superpowers/

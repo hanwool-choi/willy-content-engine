@@ -1,0 +1,79 @@
+# 최윌리 옷장연구소 — 콘텐츠 엔진
+
+Threads 채널 `@choi.willy.lab` 의 `[내일 뭐입지?]` 콘텐츠를 반자동으로
+기획·생성하는 로컬 도구.
+
+버튼 한 번으로 주간 14룩(요일 7 × 성별 2)을 수집하고, 서울 주간 날씨에 맞춰
+요일별로 배정한 뒤, AI로 발행용 이미지를 만들고 폴더와 워드 문서로 정리한다.
+
+## 동작 방식
+
+```
+[수집] → 분석 → 날씨 → 배정 → [1차 컨펌] → AI 생성 → [최종 컨펌] → 폴더·문서
+```
+
+최종 컨펌 전까지 `outputs/`에 아무것도 쓰지 않는다. 1차 컨펌과 최종 컨펌 사이,
+UI는 수집된 룩과 생성된 이미지의 썸네일을 `/api/image/{look_id}` 와
+`/api/generated/{date}/{gender}` 엔드포인트로 내려받아 화면에 보여준다.
+
+## 수집 대상
+
+- 무신사 스냅 오늘
+- 유니클로 스타일링북 women / men
+- 사용자 직접 투입 (URL 또는 파일)
+
+수집은 **사용자가 버튼을 눌렀을 때만** 실행된다. 스케줄러 자동 순회는 하지 않는다.
+에이블리·크림은 각각 봇 차단(CAPTCHA)과 robots.txt 미제공으로 의도적으로 제외했다.
+
+## 설치
+
+```bash
+pip install -e ".[dev]"
+playwright install chromium
+cp .env.example .env
+```
+
+`.env` 에 키를 채운다:
+
+- `KMA_SERVICE_KEY` — 공공데이터포털 기상청 단기예보/중기예보 서비스 키
+- `ANTHROPIC_API_KEY` — 룩 분석용 Claude API 키
+
+## 실행
+
+```bash
+python run.py
+```
+
+브라우저에서 http://127.0.0.1:8765 접속.
+
+## 테스트
+
+```bash
+pytest
+```
+
+테스트는 네트워크를 타지 않는다. 외부 응답은 페이크/고정 픽스처로 대체한다.
+
+## 미확정 항목
+
+디자인 컨셉과 이미지 생성 엔진이 정해지지 않아 다음이 비어 있다.
+비어 있어도 파이프라인은 끝까지 동작한다.
+
+| 항목 | 위치 | 확정 시 조치 |
+|---|---|---|
+| 화풍·배경·조명 | `presets/concept_v1.yaml` 의 `render.*` | YAML 값만 채움 |
+| 고정 모델 이미지 | `presets/concept_v1.yaml` 의 `model.*.face_ref` | 이미지 경로 지정 |
+| 이미지 생성 엔진 | `src/willy/generator/` | `ImageGenerator` 구현체 추가 |
+
+현재는 `NoopGenerator`가 원본을 복사하고 프롬프트를 `.prompt.txt`로 남긴다.
+엔진 없이 프롬프트 품질을 먼저 검증할 수 있다.
+
+## 주의
+
+`outputs/` 안의 `_ref_원본_발행금지.*` 는 로컬 참고·연구용 원본이다.
+**발행하지 않는다.** 발행용은 같은 폴더의 `발행용.*` 다.
+
+## 설계 문서
+
+- 스펙: `docs/superpowers/specs/2026-07-31-tomorrow-outfit-pipeline-design.md`
+- 구현 계획: `docs/superpowers/plans/2026-07-31-tomorrow-outfit-pipeline.md`

@@ -1,3 +1,4 @@
+import contextlib
 from pathlib import Path
 
 import pytest
@@ -68,7 +69,7 @@ def spec(name="musinsa_snap") -> SourceSpec:
 def make_collector(tmp_path: Path, page: FakePage, downloader=None) -> Collector:
     return Collector(
         workspace=tmp_path,
-        page_factory=lambda: page,
+        page_factory=lambda: contextlib.nullcontext(page),
         downloader=downloader or (lambda url, dest: dest.write_bytes(b"\xff\xd8original")),
     )
 
@@ -177,3 +178,46 @@ def test_collect_falls_back_to_screenshot_when_download_returns_non_image(tmp_pa
     )
 
     assert looks[0].capture_method == "screenshot"
+
+
+def test_collect_closes_the_page_context(tmp_path: Path):
+    """수집이 끝나면 브라우저가 닫혀야 한다. 서버가 계속 떠 있으므로
+    닫지 않으면 버튼을 누를 때마다 Chromium이 쌓인다."""
+    closed = []
+
+    @contextlib.contextmanager
+    def factory():
+        page = FakePage([FakeElement("https://cdn.test/a.jpg")])
+        try:
+            yield page
+        finally:
+            closed.append(True)
+
+    collector = Collector(
+        workspace=tmp_path,
+        page_factory=factory,
+        downloader=lambda url, dest: dest.write_bytes(b"\xff\xd8original"),
+    )
+    collector.collect([spec()], limit_per_source=5)
+
+    assert closed == [True]
+
+
+def test_collect_closes_the_page_even_when_a_source_explodes(tmp_path: Path):
+    closed = []
+
+    @contextlib.contextmanager
+    def factory():
+        class ExplodingPage(FakePage):
+            def goto(self, url: str, **kwargs):
+                raise RuntimeError("페이지 로드 실패")
+
+        try:
+            yield ExplodingPage([])
+        finally:
+            closed.append(True)
+
+    collector = Collector(workspace=tmp_path, page_factory=factory)
+    collector.collect([spec()], limit_per_source=5)
+
+    assert closed == [True]

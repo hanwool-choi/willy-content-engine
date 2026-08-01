@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import shutil
+from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Callable
 
@@ -29,9 +30,15 @@ class Collector:
     def __init__(
         self,
         workspace: Path,
-        page_factory: Callable[[], object],
+        page_factory: Callable[[], AbstractContextManager],
         downloader: Callable[[str, Path], None] | None = None,
     ):
+        """
+        page_factory: 페이지를 내주는 컨텍스트매니저를 반환하는 콜러블.
+            (페이지 자체가 아니라 `with page_factory() as page:` 로 여는 대상이다.)
+            `collect`가 이 컨텍스트매니저의 수명을 소유하고 항상 닫는다 —
+            호출자가 `__exit__`을 잊어 브라우저가 계속 떠 있는 사고를 막기 위해서다.
+        """
         self._workspace = workspace
         self._workspace.mkdir(parents=True, exist_ok=True)
         self._page_factory = page_factory
@@ -40,15 +47,17 @@ class Collector:
     def collect(
         self, sources: list[SourceSpec], limit_per_source: int = 20
     ) -> list[RawLook]:
-        page = self._page_factory()
         looks: list[RawLook] = []
 
-        for spec in sources:
-            try:
-                looks.extend(self._collect_one(page, spec, limit_per_source))
-            except Exception:
-                # 한 소스 실패가 전체를 무너뜨리지 않는다.
-                log.exception("소스 수집 실패: %s", spec.name)
+        # 페이지 수명을 여기서 소유한다. 호출자가 __exit__을 잊으면
+        # 브라우저가 그대로 남기 때문이다.
+        with self._page_factory() as page:
+            for spec in sources:
+                try:
+                    looks.extend(self._collect_one(page, spec, limit_per_source))
+                except Exception:
+                    # 한 소스 실패가 전체를 무너뜨리지 않는다.
+                    log.exception("소스 수집 실패: %s", spec.name)
 
         return looks
 
