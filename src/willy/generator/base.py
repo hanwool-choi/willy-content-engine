@@ -19,12 +19,11 @@ def build_prompt(analysis: LookAnalysis, preset: ConceptPreset) -> str:
         + (f", {analysis.outer} 아우터" if analysis.outer else "")
         + f", {analysis.layers}겹 레이어드",
         f"소재감: {analysis.fabric_weight}",
-        f"색상: {', '.join(analysis.palette)}",
-        f"무드: {', '.join(analysis.style_tags)}",
-        f"비율: {preset.aspect_ratio}",
     ]
 
     for label, value in (
+        ("색상", ", ".join(analysis.palette)),
+        ("무드", ", ".join(analysis.style_tags)),
         ("화풍", preset.art_style),
         ("배경", preset.background),
         ("조명", preset.lighting),
@@ -32,6 +31,8 @@ def build_prompt(analysis: LookAnalysis, preset: ConceptPreset) -> str:
     ):
         if value:
             lines.append(f"{label}: {value}")
+
+    lines.append(f"비율: {preset.aspect_ratio}")
 
     if preset.negative:
         lines.append("제외: " + ", ".join(preset.negative))

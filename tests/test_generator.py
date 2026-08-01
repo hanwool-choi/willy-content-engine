@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -69,6 +70,32 @@ def test_noop_generator_copies_source_and_records_prompt(tmp_path: Path):
     assert result.exists()
     assert result.read_bytes() == b"\xff\xd8src"
     # 엔진 확정 전까지 프롬프트를 눈으로 검증할 수 있어야 한다.
+    assert (out / "L1.prompt.txt").exists()
+
+
+def test_build_prompt_omits_empty_lists():
+    """분석기가 style_tags/palette를 빈 리스트로 줄 수 있다. 라벨만 남으면 안 된다."""
+    bare = replace(look(), style_tags=[], palette=[])
+
+    prompt = build_prompt(bare, load_preset(PRESET_PATH))
+
+    assert "색상:" not in prompt
+    assert "무드:" not in prompt
+    assert "소재감:" in prompt  # 나머지는 그대로 나온다
+
+
+def test_noop_generator_preserves_source_format(tmp_path: Path):
+    """원본이 PNG면 결과도 .png다. 확장자와 내용이 어긋나면 안 된다."""
+    source = tmp_path / "src.png"
+    source.write_bytes(b"\x89PNG\r\n\x1a\n" + b"body")
+    out = tmp_path / "out"
+
+    result = NoopGenerator(output_dir=out).generate(
+        source, look(), load_preset(PRESET_PATH), strength=0.65
+    )
+
+    assert result.suffix == ".png"
+    assert result.read_bytes().startswith(b"\x89PNG")
     assert (out / "L1.prompt.txt").exists()
 
 
