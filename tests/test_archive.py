@@ -164,6 +164,23 @@ def test_find_honours_exclude_ids(archive: Archive):
     assert second.look_id != first.look_id
 
 
+def test_find_substitute_honours_injected_clock(archive: Archive):
+    """as_of가 없으면 오늘 기준. 있으면 그 시점 기준으로 4주를 센다."""
+    archive.save(make_look("old"))
+    archive.mark_used("old", used_on=date(2026, 8, 3))
+
+    # 사용 직후 시점에서는 제외된다
+    assert archive.find_substitute(
+        temp=23.0, rain_ok=True, season="summer", gender=Gender.MEN,
+        as_of=date(2026, 8, 10),
+    ) is None
+    # 4주가 지난 시점에서는 다시 후보가 된다
+    assert archive.find_substitute(
+        temp=23.0, rain_ok=True, season="summer", gender=Gender.MEN,
+        as_of=date(2026, 9, 30),
+    ) is not None
+
+
 def test_find_breaks_ties_deterministically(archive: Archive):
     """거리가 같으면 look_id 순으로 고정한다. 파이프라인 재현성에 필요하다."""
     archive.save(make_look("bbb", temp_range=(20, 26)))  # 중앙값 23, 거리 0

@@ -161,6 +161,32 @@ def test_assign_never_reuses_the_same_archive_look_twice(tmp_path: Path):
     assert len(set(picked)) == 2, f"같은 룩이 두 번 배정됨: {picked}"
 
 
+def test_assign_fallback_does_not_steal_a_later_days_pool_look(tmp_path: Path):
+    """앞 요일의 아카이브 폴백이 뒤 요일에 예약된 룩을 가져가면 안 된다.
+
+    gather()가 오늘 수집분도 아카이브에 넣기 때문에 실제로 도달하는 경로다.
+    """
+    from willy.archive import Archive
+
+    archive = Archive(tmp_path / "a.db")
+    good = look("good", (24, 30))
+    bad = look("bad", (-10, -5))
+    for entry in (good, bad):
+        archive.save(entry)
+
+    week = [day(0), day(1, tmax=27, tmin=27)]
+
+    assignment, _ = assign([good, bad], week, archive=archive)
+
+    ids = [
+        assignment[(d.date, Gender.MEN)].look_id
+        for d in week
+        if assignment[(d.date, Gender.MEN)] is not None
+    ]
+    assert len(ids) == len(set(ids)), f"같은 룩이 두 번 배정됨: {ids}"
+    assert assignment[(week[1].date, Gender.MEN)].look_id == "good"
+
+
 def test_assign_dry_day_fallback_accepts_rain_capable_look(tmp_path: Path):
     """맑은 날 폴백은 우천 가능 룩도 받는다."""
     from willy.archive import Archive

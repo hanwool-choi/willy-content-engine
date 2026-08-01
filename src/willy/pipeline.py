@@ -82,6 +82,13 @@ class Pipeline:
         for (slot_date, gender), analysis in state.assignment.items():
             if analysis is None or analysis.image_path is None:
                 continue
+            if not analysis.image_path.exists():
+                log.warning(
+                    "원본 이미지가 없어 생성을 건너뜁니다: %s (%s)",
+                    analysis.image_path,
+                    analysis.look_id,
+                )
+                continue
             try:
                 generated[(slot_date, gender)] = self.generator.generate(
                     analysis.image_path, analysis, self.preset, self.preset.strength

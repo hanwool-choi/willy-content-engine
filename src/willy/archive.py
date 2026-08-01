@@ -88,6 +88,7 @@ class Archive:
         gender: Gender,
         exclude_recent_weeks: int = 4,
         exclude_ids: set[str] | None = None,
+        as_of: date | None = None,
     ) -> LookAnalysis | None:
         """조건에 맞는 룩 중 기온이 가장 가까운 것 하나.
 
@@ -96,8 +97,13 @@ class Archive:
 
         exclude_ids는 이번 배정에서 이미 쓴 룩이다. usages 테이블은 finalize
         시점에야 갱신되므로, 한 번의 배정 안에서는 이 인자로 중복을 막는다.
+
+        as_of는 4주 컷오프를 계산하는 기준일이다. 생략하면 오늘 날짜를 쓴다.
+        테스트가 실제 시계에 의존하지 않도록 주입할 수 있게 열어둔다.
         """
-        cutoff = (date.today() - timedelta(weeks=exclude_recent_weeks)).isoformat()
+        cutoff = (
+            (as_of or date.today()) - timedelta(weeks=exclude_recent_weeks)
+        ).isoformat()
 
         clauses = ["gender = ?", "season = ?"]
         params: list = [gender.value, season]

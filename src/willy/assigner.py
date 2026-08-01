@@ -61,6 +61,15 @@ def _assign_one_gender(
     rows, cols = linear_sum_assignment(matrix)
     chosen = {int(r): int(c) for r, c in zip(rows, cols)}
 
+    # 헝가리안이 확정한 픽을 미리 예약한다. gather()가 오늘 수집분도 아카이브에
+    # 저장하므로, 예약하지 않으면 앞 요일의 폴백이 뒤 요일 몫을 그대로 꺼내가
+    # 같은 룩이 두 요일에 배정된다.
+    used_ids.update(
+        pool[col].look_id
+        for i, col in chosen.items()
+        if matrix[i][col] <= MAX_ACCEPTABLE
+    )
+
     for i, day in enumerate(week):
         col = chosen.get(i)
         picked = pool[col] if col is not None else None

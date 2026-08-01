@@ -132,7 +132,11 @@ def test_finalize_writes_outputs_and_marks_usage(pipeline: Pipeline, tmp_path: P
 
     # 사용 이력이 남아야 4주 내 재등장이 막힌다.
     used = pipeline.archive.find_substitute(
-        temp=26.0, rain_ok=True, season="summer", gender=Gender.MEN
+        temp=26.0,
+        rain_ok=True,
+        season="summer",
+        gender=Gender.MEN,
+        as_of=date(2026, 8, 10),  # 배정 주간 직후 기준으로 고정한다
     )
     assert used is None
 
