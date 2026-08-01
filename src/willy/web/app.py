@@ -6,9 +6,11 @@ from pathlib import Path
 from typing import Callable
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
+from willy.images import UnsupportedImageError, sniff
+from willy.models import Gender
 from willy.pipeline import Pipeline, PipelineState
 
 STATIC = Path(__file__).parent / "static"
@@ -19,7 +21,23 @@ class GatherRequest(BaseModel):
 
 
 def _serialize(state: PipelineState) -> dict:
+    assigned_ids = {
+        look.look_id for look in state.assignment.values() if look is not None
+    }
+
     return {
+        "pool": [
+            {
+                "look_id": look.look_id,
+                "gender": look.gender.value,
+                "temp_range": list(look.temp_range),
+                "rain_ok": look.rain_ok,
+                "style_tags": look.style_tags,
+                "image_url": f"/api/image/{look.look_id}",
+                "assigned": look.look_id in assigned_ids,
+            }
+            for look in state.looks
+        ],
         "week": [
             {
                 "date": d.date.isoformat(),
@@ -42,6 +60,12 @@ def _serialize(state: PipelineState) -> dict:
                 "temp_range": list(look.temp_range) if look else None,
                 "style_tags": look.style_tags if look else [],
                 "empty": look is None,
+                "image_url": f"/api/image/{look.look_id}" if look else None,
+                "generated_url": (
+                    f"/api/generated/{slot_date.isoformat()}/{gender.value}"
+                    if (slot_date, gender) in state.generated
+                    else None
+                ),
             }
             for (slot_date, gender), look in sorted(
                 state.assignment.items(), key=lambda kv: (kv[0][0], kv[0][1].value)
@@ -61,6 +85,36 @@ def create_app(pipeline_factory: Callable[[], Pipeline]) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
         return (STATIC / "index.html").read_text(encoding="utf-8")
+
+    def _serve(path) -> FileResponse:
+        """파이프라인이 만든 파일만 내보낸다."""
+        if path is None or not path.exists():
+            raise HTTPException(404, "이미지를 찾을 수 없습니다.")
+        try:
+            media_type, _suffix = sniff(path)
+        except UnsupportedImageError:
+            raise HTTPException(404, "이미지 형식을 알 수 없습니다.")
+        return FileResponse(path, media_type=media_type)
+
+    @app.get("/api/image/{look_id}")
+    def look_image(look_id: str) -> FileResponse:
+        # URL 조각을 경로에 이어붙이지 않는다. 현재 상태에서 id로 조회해
+        # 파이프라인이 만든 경로만 내보낸다.
+        state = ctx["state"]
+        if state is None:
+            raise HTTPException(404, "수집된 룩이 없습니다.")
+
+        match = next((x for x in state.looks if x.look_id == look_id), None)
+        if match is None:
+            raise HTTPException(404, "이미지를 찾을 수 없습니다.")
+        return _serve(match.image_path)
+
+    @app.get("/api/generated/{slot_date}/{gender}")
+    def generated_image(slot_date: date, gender: Gender) -> FileResponse:
+        state = ctx["state"]
+        if state is None:
+            raise HTTPException(404, "생성된 이미지가 없습니다.")
+        return _serve(state.generated.get((slot_date, gender)))
 
     @app.post("/api/gather")
     def gather(request: GatherRequest) -> dict:

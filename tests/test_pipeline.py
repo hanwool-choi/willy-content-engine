@@ -62,7 +62,7 @@ class FakeGenerator:
     def generate(self, source_image, analysis, preset, strength):
         self.calls += 1
         path = self.out / f"{analysis.look_id}.png"
-        path.write_bytes(b"\x89PNGgen")
+        path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"gen")  # 완전한 PNG 매직바이트
         return path
 
 
@@ -129,6 +129,11 @@ def test_finalize_writes_outputs_and_marks_usage(pipeline: Pipeline, tmp_path: P
     assert root.exists()
     assert root.name == "2026-08_W1"
     assert (root / "_주간요약.docx").exists()
+
+    # 발행용 이미지가 실제로 복사되었는지. 픽스처 바이트가 깨져 있으면
+    # publish가 조용히 건너뛰므로 여기서 잡는다.
+    published = list(root.glob("*/*/발행용.*"))
+    assert published, "발행용 이미지가 하나도 만들어지지 않았다"
 
     # 사용 이력이 남아야 4주 내 재등장이 막힌다.
     used = pipeline.archive.find_substitute(

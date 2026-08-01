@@ -11,6 +11,20 @@
   .slots { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
   .slot { border: 1px solid #ddd; border-radius: 8px; padding: 8px; font-size: 12px; }
   .slot.empty { border-style: dashed; color: #b91c1c; }
+
+  h2 { font-size: 15px; margin: 24px 0 8px; }
+  .muted { color: #6b7280; font-weight: normal; font-size: 13px; }
+  .pool { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+  .card { border: 1px solid #ddd; border-radius: 8px; padding: 6px; font-size: 11px; }
+  .card.unused { opacity: .45; }
+  .card .badge { float: right; font-size: 10px; }
+  img.thumb {
+    width: 100%; aspect-ratio: 3 / 4; object-fit: cover;
+    border-radius: 6px; background: #f3f4f6; display: block; margin-bottom: 4px;
+  }
+  .pair { display: flex; gap: 4px; }
+  .pair figure { flex: 1; margin: 0; }
+  .pair figcaption { font-size: 10px; color: #6b7280; text-align: center; }
   .warn { background: #fef3c7; border-radius: 8px; padding: 10px; margin: 12px 0; }
   button { padding: 10px 16px; margin-right: 8px; border-radius: 8px; cursor: pointer; }
   button:disabled { opacity: .45; cursor: not-allowed; }
@@ -27,6 +41,11 @@
 
 <div id="warnings"></div>
 <div class="week" id="week"></div>
+
+<h2 id="pool-title" hidden>수집된 룩 <span class="muted" id="pool-count"></span></h2>
+<div class="pool" id="pool"></div>
+
+<h2 id="board-title" hidden>요일별 배정</h2>
 <div class="slots" id="slots"></div>
 <pre id="result"></pre>
 
@@ -42,8 +61,35 @@
         강수 ${d.precip_prob}%
       </div>`).join("");
 
+    const pool = data.pool || [];
+    $("pool-title").hidden = pool.length === 0;
+    $("pool-count").textContent = pool.length
+      ? `${pool.length}장 중 ${pool.filter((p) => p.assigned).length}장 배정됨`
+      : "";
+    $("pool").innerHTML = pool.map((p) => `
+      <div class="card ${p.assigned ? "" : "unused"}">
+        <img class="thumb" src="${p.image_url}" alt="${p.look_id}" loading="lazy" />
+        <span class="badge">${p.rain_ok ? "☔" : ""}</span>
+        <b>${p.look_id}</b> · ${p.gender}<br />
+        ${p.temp_range.join("~")}℃<br />
+        ${p.style_tags.join(", ")}
+      </div>`).join("");
+
+    $("board-title").hidden = data.slots.length === 0;
     $("slots").innerHTML = data.slots.map((s) => `
       <div class="slot ${s.empty ? "empty" : ""}">
+        ${s.empty ? "" : `
+          <div class="pair">
+            <figure>
+              <img class="thumb" src="${s.image_url}" alt="원본" loading="lazy" />
+              <figcaption>참고 원본</figcaption>
+            </figure>
+            ${s.generated_url ? `
+            <figure>
+              <img class="thumb" src="${s.generated_url}" alt="발행용" loading="lazy" />
+              <figcaption>발행용</figcaption>
+            </figure>` : ""}
+          </div>`}
         ${s.date.slice(5)} · ${s.gender}<br />
         ${s.empty ? "비어 있음" : s.look_id}<br />
         ${s.temp_range ? s.temp_range.join("~") + "℃" : ""}<br />
