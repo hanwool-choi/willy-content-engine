@@ -2,17 +2,37 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 from dataclasses import asdict
 from pathlib import Path
 
-from willy.images import sniff
+from willy.images import UnsupportedImageError, sniff
 from willy.models import Assignment, DayWeather, Gender, iso_week_label
 from willy.publisher.docs import write_item_doc, write_week_summary
+
+log = logging.getLogger(__name__)
 
 # 원본은 로컬 참고용이다. 파일명에 표식을 박아 오발행을 막는다.
 REF_STEM = "_ref_원본_발행금지"
 PUBLISH_STEM = "발행용"
+
+
+def _copy_with_real_suffix(src: Path, dest_dir: Path, stem: str) -> Path | None:
+    """실제 바이트로 확장자를 정해 복사한다.
+
+    최종 컨펌 이후에 도는 단계다. 파일 한 장이 깨졌다고 주 전체 산출을
+    날리지 않는다. 실패는 경고로 남기고 나머지를 계속 만든다.
+    """
+    try:
+        _media_type, suffix = sniff(src)
+    except UnsupportedImageError:
+        log.warning("이미지 형식을 알 수 없어 건너뜁니다: %s", src)
+        return None
+
+    dest = dest_dir / f"{stem}{suffix}"
+    shutil.copyfile(src, dest)
+    return dest
 
 
 def _write_analysis(path: Path, analysis) -> None:
@@ -50,16 +70,13 @@ def publish(
             gender_dir.mkdir(parents=True, exist_ok=True)
 
             if analysis.image_path and analysis.image_path.exists():
-                _media, suffix = sniff(analysis.image_path)
-                shutil.copyfile(analysis.image_path, gender_dir / f"{REF_STEM}{suffix}")
+                _copy_with_real_suffix(analysis.image_path, gender_dir, REF_STEM)
 
             gen_path = generated.get((day.date, gender))
             if gen_path and gen_path.exists():
-                _media, suffix = sniff(gen_path)
-                shutil.copyfile(gen_path, gender_dir / f"{PUBLISH_STEM}{suffix}")
+                _copy_with_real_suffix(gen_path, gender_dir, PUBLISH_STEM)
 
             _write_analysis(gender_dir / "analysis.json", analysis)
-            entries[gender] = []
 
         write_item_doc(day_dir / "아이템정보.docx", day, entries)
 
