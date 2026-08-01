@@ -118,6 +118,10 @@ def create_app(pipeline_factory: Callable[[], Pipeline]) -> FastAPI:
 
     @app.post("/api/gather")
     def gather(request: GatherRequest) -> dict:
+        previous = ctx["pipeline"]
+        if previous is not None:
+            previous.archive.close()
+
         pipeline = pipeline_factory()
         state = pipeline.gather(base_date=request.base_date)
         ctx.update(pipeline=pipeline, state=state, generated=False)

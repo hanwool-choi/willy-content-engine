@@ -161,3 +161,32 @@ def test_image_endpoint_does_not_serve_arbitrary_paths(client: TestClient):
 
 def test_image_endpoint_before_gather_is_404(client: TestClient):
     assert client.get("/api/image/L0").status_code == 404
+
+
+def test_style_tags_are_escaped_in_the_page(client: TestClient):
+    """비전 모델이 만든 값이 그대로 실행되면 2단계 컨펌이 무의미해진다.
+
+    index.html이 esc()로 감싸는지 소스에서 확인한다. 값 자체는 API가
+    그대로 실어 나르는 게 맞고, 위험은 렌더링 시점에 있다.
+    """
+    page = client.get("/").text
+
+    assert "const esc =" in page, "이스케이프 헬퍼가 없다"
+    for expression in ("p.style_tags.join", "s.style_tags.join", "w.message"):
+        occurrences = [
+            line for line in page.splitlines() if expression in line
+        ]
+        assert occurrences, f"{expression} 를 찾지 못했다"
+        assert all("esc(" in line for line in occurrences), (
+            f"{expression} 가 이스케이프되지 않았다: {occurrences}"
+        )
+
+
+def test_regather_closes_the_previous_archive(client: TestClient):
+    """새로 수집할 때 이전 실행의 연결을 닫고 새 파이프라인으로 간다."""
+    first = client.post("/api/gather", json={"base_date": "2026-08-03"})
+    second = client.post("/api/gather", json={"base_date": "2026-08-10"})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert client.post("/api/generate").status_code == 200

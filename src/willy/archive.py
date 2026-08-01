@@ -80,6 +80,10 @@ class Archive:
     def count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM looks").fetchone()[0]
 
+    def close(self) -> None:
+        """열린 연결을 닫는다. 서버가 계속 떠 있으므로 GC에 맡기지 않는다."""
+        self._conn.close()
+
     def find_substitute(
         self,
         temp: float,

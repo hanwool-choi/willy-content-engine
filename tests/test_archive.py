@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -194,3 +195,13 @@ def test_find_breaks_ties_deterministically(archive: Archive):
     }
 
     assert picks == {"aaa"}
+
+
+def test_close_releases_the_connection(tmp_path: Path):
+    archive = Archive(tmp_path / "a.db")
+    archive.save(make_look("x"))
+
+    archive.close()
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        archive.count()

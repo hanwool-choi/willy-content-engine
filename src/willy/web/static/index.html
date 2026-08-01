@@ -53,12 +53,20 @@
   const $ = (id) => document.getElementById(id);
   $("base").valueAsDate = new Date();
 
+  // 비전 모델과 외부 API에서 온 값은 그대로 innerHTML에 넣지 않는다.
+  // 수집 대상이 제3자 사이트 이미지라, 그 안에 심긴 텍스트가 모델을 거쳐
+  // 여기까지 흘러들어올 수 있다.
+  const esc = (value) =>
+    String(value ?? "").replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    })[c]);
+
   function render(data) {
     $("week").innerHTML = data.week.map((d) => `
       <div class="day ${d.is_rainy ? "rainy" : ""} ${d.resolution === "coarse" ? "coarse" : ""}">
-        <b>${d.weekday}</b><br />${d.date.slice(5)}<br />
-        ${d.sky}<br />${d.temp_max}/${d.temp_min}℃<br />
-        강수 ${d.precip_prob}%
+        <b>${esc(d.weekday)}</b><br />${esc(d.date.slice(5))}<br />
+        ${esc(d.sky)}<br />${esc(d.temp_max)}/${esc(d.temp_min)}℃<br />
+        강수 ${esc(d.precip_prob)}%
       </div>`).join("");
 
     const pool = data.pool || [];
@@ -68,11 +76,11 @@
       : "";
     $("pool").innerHTML = pool.map((p) => `
       <div class="card ${p.assigned ? "" : "unused"}">
-        <img class="thumb" src="${p.image_url}" alt="${p.look_id}" loading="lazy" />
+        <img class="thumb" src="${esc(p.image_url)}" alt="${esc(p.look_id)}" loading="lazy" />
         <span class="badge">${p.rain_ok ? "☔" : ""}</span>
-        <b>${p.look_id}</b> · ${p.gender}<br />
-        ${p.temp_range.join("~")}℃<br />
-        ${p.style_tags.join(", ")}
+        <b>${esc(p.look_id)}</b> · ${esc(p.gender)}<br />
+        ${esc(p.temp_range.join("~"))}℃<br />
+        ${esc(p.style_tags.join(", "))}
       </div>`).join("");
 
     $("board-title").hidden = data.slots.length === 0;
@@ -81,23 +89,23 @@
         ${s.empty ? "" : `
           <div class="pair">
             <figure>
-              <img class="thumb" src="${s.image_url}" alt="원본" loading="lazy" />
+              <img class="thumb" src="${esc(s.image_url)}" alt="원본" loading="lazy" />
               <figcaption>참고 원본</figcaption>
             </figure>
             ${s.generated_url ? `
             <figure>
-              <img class="thumb" src="${s.generated_url}" alt="발행용" loading="lazy" />
+              <img class="thumb" src="${esc(s.generated_url)}" alt="발행용" loading="lazy" />
               <figcaption>발행용</figcaption>
             </figure>` : ""}
           </div>`}
-        ${s.date.slice(5)} · ${s.gender}<br />
-        ${s.empty ? "비어 있음" : s.look_id}<br />
-        ${s.temp_range ? s.temp_range.join("~") + "℃" : ""}<br />
-        ${s.style_tags.join(", ")}
+        ${esc(s.date.slice(5))} · ${esc(s.gender)}<br />
+        ${s.empty ? "비어 있음" : esc(s.look_id)}<br />
+        ${s.temp_range ? esc(s.temp_range.join("~")) + "℃" : ""}<br />
+        ${esc(s.style_tags.join(", "))}
       </div>`).join("");
 
     $("warnings").innerHTML = data.warnings.length
-      ? `<div class="warn">${data.warnings.map((w) => `[${w.code}] ${w.message}`).join("<br />")}</div>`
+      ? `<div class="warn">${data.warnings.map((w) => `[${esc(w.code)}] ${esc(w.message)}`).join("<br />")}</div>`
       : "";
   }
 
