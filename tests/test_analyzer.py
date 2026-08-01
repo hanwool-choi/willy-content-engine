@@ -83,16 +83,32 @@ def test_analyze_maps_fields(image: Path):
 
 
 def test_analyze_derives_season_not_from_model(image: Path):
-    """계절은 모델이 말한 값이 아니라 기온에서 규칙으로 파생한다."""
-    analyzer = LookAnalyzer(api_key="k", client=FakeClient(VALID))
+    """모델이 계절을 말해줘도 무시하고 기온에서 파생한다.
+
+    아카이브 폴백이 season으로 필터하므로, 모델이 들쭉날쭉 답하면
+    룩 재사용이 조용히 깨진다.
+    """
+    lying = VALID.replace('"rain_ok": false', '"season": "winter", "rain_ok": false')
+    assert lying != VALID  # replace가 실제로 적용됐는지 확인
+    analyzer = LookAnalyzer(api_key="k", client=FakeClient(lying))
+
     result = analyzer.analyze(raw(image))
 
-    assert result.season == "summer"  # 중앙값 27 -> summer
+    # temp_range [24, 30] -> 중앙값 27 -> summer. 모델이 말한 winter는 버린다.
+    assert result.season == "summer"
 
 
 def test_analyze_strips_markdown_fence(image: Path):
-    fenced = "```json\n" + VALID + "\n```"
-    analyzer = LookAnalyzer(api_key="k", client=FakeClient(fenced))
+    """앞에 중괄호가 섞인 설명이 붙어도 펜스 안의 JSON만 정확히 집어낸다.
+
+    펜스 분기가 없으면 탐욕적인 fallback 정규식이 설명 속 중괄호부터
+    JSON 끝까지를 통째로 잡아 파싱에 실패한다.
+    """
+    noisy = (
+        "설명드리자면 {이건 JSON이 아닙니다} 아래가 결과입니다.\n"
+        "```json\n" + VALID + "\n```"
+    )
+    analyzer = LookAnalyzer(api_key="k", client=FakeClient(noisy))
 
     assert analyzer.analyze(raw(image)).gender is Gender.MEN
 
