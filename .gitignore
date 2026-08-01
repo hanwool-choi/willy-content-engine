@@ -10,3 +10,4 @@ archive/
 .worktrees/
 .superpowers/
 *.egg-info/
+.claude/settings.local.json
