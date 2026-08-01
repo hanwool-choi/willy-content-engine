@@ -1,4 +1,5 @@
 import base64
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -136,4 +137,33 @@ def test_analyze_rejects_inverted_temp_range(image: Path):
     analyzer = LookAnalyzer(api_key="k", client=FakeClient(bad))
 
     with pytest.raises(ValueError, match="temp_range"):
+        analyzer.analyze(raw(image))
+
+
+def test_analyze_rejects_temp_range_that_collapses_after_truncation(image: Path):
+    """[24.1, 24.9]는 정수 변환 후 (24, 24)가 된다. lo < hi가 깨지므로 거부한다."""
+    collapsing = VALID.replace('"temp_range": [24, 30]', '"temp_range": [24.1, 24.9]')
+    assert collapsing != VALID
+    analyzer = LookAnalyzer(api_key="k", client=FakeClient(collapsing))
+
+    with pytest.raises(ValueError, match="temp_range"):
+        analyzer.analyze(raw(image))
+
+
+def test_analyze_rejects_response_missing_required_key(image: Path):
+    """필수 키가 빠지면 KeyError가 아니라 ValueError여야 한다."""
+    data = json.loads(VALID)
+    del data["sleeve"]
+    analyzer = LookAnalyzer(api_key="k", client=FakeClient(json.dumps(data)))
+
+    with pytest.raises(ValueError, match="분석 결과를 파싱"):
+        analyzer.analyze(raw(image))
+
+
+def test_analyze_rejects_unknown_gender(image: Path):
+    bad = VALID.replace('"gender": "men"', '"gender": "male"')
+    assert bad != VALID
+    analyzer = LookAnalyzer(api_key="k", client=FakeClient(bad))
+
+    with pytest.raises(ValueError, match="분석 결과를 파싱"):
         analyzer.analyze(raw(image))

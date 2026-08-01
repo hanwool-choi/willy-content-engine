@@ -11,6 +11,16 @@ from willy.models import Gender, LookAnalysis, RawLook
 
 MODEL = "claude-sonnet-5"
 
+REQUIRED_KEYS = (
+    "gender",
+    "sleeve",
+    "layers",
+    "fabric_weight",
+    "coverage",
+    "temp_range",
+    "rain_ok",
+)
+
 ANALYSIS_PROMPT = """이 사진의 착장을 분석해 JSON만 출력해. 설명 문장은 쓰지 마.
 
 {
@@ -95,20 +105,39 @@ class LookAnalyzer:
 
         data = _extract_json(response.content[0].text)
 
-        lo, hi = data["temp_range"]
+        missing = [key for key in REQUIRED_KEYS if key not in data]
+        if missing:
+            raise ValueError(f"분석 결과를 파싱할 수 없습니다: 필수 키 누락 {missing}")
+
+        raw_range = data["temp_range"]
+        try:
+            lo, hi = (int(value) for value in raw_range)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"분석 결과를 파싱할 수 없습니다: temp_range={raw_range!r}"
+            ) from exc
+
+        # 정수 절삭 뒤에 검사해야 한다. [24.1, 24.9]는 절삭하면 (24, 24)로 붕괴한다.
         if lo >= hi:
-            raise ValueError(f"temp_range 순서가 잘못되었습니다: {data['temp_range']}")
+            raise ValueError(f"temp_range 순서가 잘못되었습니다: {raw_range}")
+
+        try:
+            gender = Gender(data["gender"])
+        except ValueError as exc:
+            raise ValueError(
+                f"분석 결과를 파싱할 수 없습니다: gender={data['gender']!r}"
+            ) from exc
 
         median = (lo + hi) / 2
         return LookAnalysis(
             look_id=raw_look.look_id,
-            gender=Gender(data["gender"]),
+            gender=gender,
             sleeve=data["sleeve"],
             outer=data.get("outer"),
             layers=int(data["layers"]),
             fabric_weight=data["fabric_weight"],
             coverage=data["coverage"],
-            temp_range=(int(lo), int(hi)),
+            temp_range=(lo, hi),
             rain_ok=bool(data["rain_ok"]),
             season=derive_season(median, raw_look.collected_at.month),
             style_tags=list(data.get("style_tags", [])),
