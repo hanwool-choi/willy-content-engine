@@ -12,6 +12,7 @@ from typing import Callable
 import httpx
 
 from willy.collector.sources import SourceSpec, build_look_id
+from willy.images import retag
 from willy.models import RawLook
 
 log = logging.getLogger(__name__)
@@ -78,6 +79,7 @@ class Collector:
             if image_url:
                 try:
                     self._download(image_url, dest)
+                    dest = retag(dest)
                     method = "original_url"
                 except Exception:
                     log.warning("원본 다운로드 실패, 캡처로 대체: %s", image_url)
@@ -114,6 +116,8 @@ class Collector:
         else:
             shutil.copyfile(path_or_url, dest)
             source_url = None
+
+        dest = retag(dest)
 
         return RawLook(
             look_id=look_id,

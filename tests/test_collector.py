@@ -140,3 +140,40 @@ def test_add_manual_from_local_file(tmp_path: Path):
     assert look.source == "manual"
     assert look.capture_method == "original_url"
     assert look.image_path.read_bytes() == b"\xff\xd8manual"
+
+
+def test_add_manual_preserves_png_format(tmp_path: Path):
+    """스크린샷은 대개 PNG다. .jpg로 이름만 바꿔 저장하면 안 된다."""
+    src = tmp_path / "shot.png"
+    src.write_bytes(b"\x89PNG\r\n\x1a\n" + b"body")
+
+    look = make_collector(tmp_path, FakePage([])).add_manual(str(src))
+
+    assert look.image_path.suffix == ".png"
+    assert src.exists()  # 원본은 그대로 남는다
+
+
+def test_add_manual_from_url(tmp_path: Path):
+    def downloader(url, dest):
+        dest.write_bytes(b"\xff\xd8\xff\xe0downloaded")
+
+    look = make_collector(tmp_path, FakePage([]), downloader=downloader).add_manual(
+        "https://cdn.test/a.jpg"
+    )
+
+    assert look.source == "manual"
+    assert look.source_url == "https://cdn.test/a.jpg"
+    assert look.image_path.read_bytes().startswith(b"\xff\xd8")
+
+
+def test_collect_falls_back_to_screenshot_when_download_returns_non_image(tmp_path: Path):
+    """다운로드가 HTML을 받아와도 이미지인 척하지 않는다."""
+    def downloader(url, dest):
+        dest.write_bytes(b"<!DOCTYPE html><html>404</html>")
+
+    page = FakePage([FakeElement("https://cdn.test/a.jpg")])
+    looks = make_collector(tmp_path, page, downloader=downloader).collect(
+        [spec()], limit_per_source=5
+    )
+
+    assert looks[0].capture_method == "screenshot"

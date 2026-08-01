@@ -167,3 +167,24 @@ def test_analyze_rejects_unknown_gender(image: Path):
 
     with pytest.raises(ValueError, match="분석 결과를 파싱"):
         analyzer.analyze(raw(image))
+
+
+def test_analyze_declares_media_type_from_bytes(tmp_path: Path):
+    """PNG를 image/jpeg라고 선언하면 비전 API가 거부한다."""
+    png = tmp_path / "look.jpg"  # 확장자는 jpg지만 내용은 png
+    png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"body")
+
+    client = FakeClient(VALID)
+    LookAnalyzer(api_key="k", client=client).analyze(
+        RawLook(
+            look_id="L1",
+            source="manual",
+            image_path=png,
+            capture_method="original_url",
+            collected_at=datetime(2026, 8, 3),
+        )
+    )
+
+    content = client.messages.last_kwargs["messages"][0]["content"]
+    image_block = next(b for b in content if b["type"] == "image")
+    assert image_block["source"]["media_type"] == "image/png"

@@ -7,6 +7,7 @@ import re
 
 from anthropic import Anthropic
 
+from willy.images import sniff
 from willy.models import Gender, LookAnalysis, RawLook
 
 MODEL = "claude-sonnet-5"
@@ -80,6 +81,7 @@ class LookAnalyzer:
         self._client = client or Anthropic(api_key=api_key)
 
     def analyze(self, raw_look: RawLook) -> LookAnalysis:
+        media_type, _suffix = sniff(raw_look.image_path)
         encoded = base64.standard_b64encode(raw_look.image_path.read_bytes()).decode()
 
         response = self._client.messages.create(
@@ -93,7 +95,7 @@ class LookAnalyzer:
                             "type": "image",
                             "source": {
                                 "type": "base64",
-                                "media_type": "image/jpeg",
+                                "media_type": media_type,
                                 "data": encoded,
                             },
                         },
