@@ -5,6 +5,13 @@ import logging
 
 import uvicorn
 
+import sys
+from pathlib import Path
+
+# 편집 설치(pip install -e .) 없이도 바로 실행되게 한다. pyproject의
+# pythonpath 설정은 pytest 전용이라 여기까지 오지 않는다.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+
 from willy.analyzer import LookAnalyzer
 from willy.archive import Archive
 from willy.collector.browser import browser_page
