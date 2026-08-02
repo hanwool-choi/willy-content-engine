@@ -18,6 +18,7 @@ from willy.weather.parser import merge_forecasts
 log = logging.getLogger(__name__)
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+MAX_FORECAST_DAYS = 16  # Open-Meteo가 허용하는 최대 예보 일수
 
 # WMO 날씨코드 -> 한글 하늘상태. sky는 폴더명에 그대로 쓰이므로 짧고
 # 파일시스템 안전 문자로 유지한다. 매핑에 없는 코드는 "흐림"으로 떨어진다.
@@ -104,8 +105,14 @@ class OpenMeteoClient:
             )
         return days
 
-    def get_week_forecast(self, base_date: date) -> list[DayWeather]:
-        """서울 7일 예보. 실패해도 절대 예외를 전파하지 않고 7일을 채워 돌려준다."""
+    def get_week_forecast(self, base_date: date, days: int = 7) -> list[DayWeather]:
+        """서울 `days`일 예보. 실패해도 절대 예외를 전파하지 않고 `days`일을 채워 돌려준다."""
+        # Open-Meteo는 언제나 '오늘'부터 준다. base_date가 내일이면 오늘치까지
+        # 함께 받아와야 원하는 날이 응답에 들어온다. 이걸 빼먹으면 요청한 날이
+        # 통째로 비어 '정보없음'으로 떨어진다.
+        offset = max(0, (base_date - date.today()).days)
+        requested = min(offset + days, MAX_FORECAST_DAYS)
+
         parsed: list[DayWeather] = []
         try:
             response = self._http.get(
@@ -116,7 +123,7 @@ class OpenMeteoClient:
                     "daily": "temperature_2m_max,temperature_2m_min,"
                     "precipitation_probability_max,weather_code",
                     "timezone": "Asia/Seoul",
-                    "forecast_days": 7,
+                    "forecast_days": requested,
                 },
             )
             response.raise_for_status()
@@ -125,6 +132,6 @@ class OpenMeteoClient:
             log.exception("Open-Meteo 조회 실패")
 
         # API가 반환한 첫 날짜가 base_date와 다를 수 있다(타임존 경계 등).
-        # merge_forecasts로 base_date 기준 7칸을 강제하고 빈 자리는
+        # merge_forecasts로 base_date 기준 `days`칸을 강제하고 빈 자리는
         # placeholder로 채운다. 직접 채움 로직을 새로 만들지 않고 재사용한다.
-        return merge_forecasts(short=parsed, mid=[], base_date=base_date)
+        return merge_forecasts(short=parsed, mid=[], base_date=base_date, days=days)

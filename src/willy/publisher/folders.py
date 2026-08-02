@@ -62,23 +62,45 @@ def publish(
         entries: dict[Gender, list[dict]] = {}
 
         for gender in (Gender.MEN, Gender.WOMEN):
-            analysis = assignment.get((day.date, gender))
-            if analysis is None:
+            # 그날 그 성별에 존재하는 픽 인덱스를 배정 딕셔너리 키에서 그대로
+            # 읽는다. picks_per_gender를 별도 인자로 받지 않아도 되게 하기
+            # 위함이다.
+            picks = sorted(
+                p for (d, g, p) in assignment if d == day.date and g == gender
+            )
+            multi = len(picks) > 1
+
+            gender_has_content = any(
+                assignment.get((day.date, gender, p)) is not None for p in picks
+            )
+            if not gender_has_content:
                 continue  # 빈 칸은 폴더를 만들지 않는다.
 
             gender_dir = day_dir / gender.value
             gender_dir.mkdir(parents=True, exist_ok=True)
 
-            if analysis.image_path and analysis.image_path.exists():
-                _copy_with_real_suffix(analysis.image_path, gender_dir, REF_STEM)
+            for pick in picks:
+                analysis = assignment.get((day.date, gender, pick))
+                if analysis is None:
+                    continue
 
-            gen_path = generated.get((day.date, gender))
-            if gen_path and gen_path.exists():
-                _copy_with_real_suffix(gen_path, gender_dir, PUBLISH_STEM)
+                suffix_label = f"_{pick + 1}" if multi else ""
 
-            _write_analysis(gender_dir / "analysis.json", analysis)
+                if analysis.image_path and analysis.image_path.exists():
+                    _copy_with_real_suffix(
+                        analysis.image_path, gender_dir, f"{REF_STEM}{suffix_label}"
+                    )
+
+                gen_path = generated.get((day.date, gender, pick))
+                if gen_path and gen_path.exists():
+                    _copy_with_real_suffix(
+                        gen_path, gender_dir, f"{PUBLISH_STEM}{suffix_label}"
+                    )
+
+                analysis_name = f"analysis{suffix_label}.json"
+                _write_analysis(gender_dir / analysis_name, analysis)
 
         write_item_doc(day_dir / "아이템정보.docx", day, entries)
 
-    write_week_summary(root / "_주간요약.docx", week, assignment)
+    write_week_summary(root / "_요약.docx", week, assignment)
     return root

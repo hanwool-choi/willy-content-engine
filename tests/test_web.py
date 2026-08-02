@@ -46,8 +46,8 @@ def test_gather_returns_week_and_slots(client: TestClient):
 
     assert response.status_code == 200
     body = response.json()
-    assert len(body["week"]) == 7
-    assert len(body["slots"]) == 14
+    assert len(body["week"]) == 1   # 내일 하루
+    assert len(body["slots"]) == 4  # 성별당 2픽
 
 
 def test_gather_exposes_warnings(client: TestClient):

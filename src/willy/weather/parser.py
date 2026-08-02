@@ -94,18 +94,18 @@ def parse_mid_term(
 
 
 def merge_forecasts(
-    short: list[DayWeather], mid: list[DayWeather], base_date: date
+    short: list[DayWeather], mid: list[DayWeather], base_date: date, days: int = 7
 ) -> list[DayWeather]:
-    """base_date부터 7일을 채운다. 겹치면 해상도 높은 단기를 우선한다.
+    """base_date부터 `days`일을 채운다. 겹치면 해상도 높은 단기를 우선한다.
 
     어느 쪽에도 없는 날은 빠뜨리지 않고 자리표시자로 채운다.
-    배정 단계에서 7칸이 항상 존재한다고 가정할 수 있게 하기 위함이다.
+    배정 단계에서 `days`칸이 항상 존재한다고 가정할 수 있게 하기 위함이다.
     """
     by_date = {d.date: d for d in mid}
     by_date.update({d.date: d for d in short})  # 단기가 중기를 덮어쓴다
 
     week: list[DayWeather] = []
-    for i in range(7):
+    for i in range(days):
         d = base_date + timedelta(days=i)
         week.append(
             by_date.get(

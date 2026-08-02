@@ -1,5 +1,5 @@
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import httpx
@@ -146,3 +146,28 @@ def test_missing_leading_days_are_filled_as_placeholders():
     assert week[0].resolution == "missing"
     assert week[1].resolution == "missing"
     assert week[2].date == date(2026, 8, 4)
+
+
+def test_requests_enough_days_to_cover_a_future_base_date():
+    """Open-Meteo는 언제나 '오늘'부터 준다.
+
+    내일 하루만 필요하다고 forecast_days=1로 요청하면 오늘치만 와서 정작
+    원하는 날이 비고 '정보없음'이 된다. 실서버에서 4칸이 전부 빈 채로
+    드러났던 버그다.
+    """
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["forecast_days"] = int(request.url.params["forecast_days"])
+        return httpx.Response(200, json=load("open_meteo_seoul.json"))
+
+    client = OpenMeteoClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    tomorrow = date.today() + timedelta(days=1)
+    week = client.get_week_forecast(tomorrow, days=1)
+
+    # 오늘 + 내일 = 최소 2일치를 받아와야 내일이 응답에 들어온다.
+    assert captured["forecast_days"] >= 2
+    assert len(week) == 1
+    assert week[0].date == tomorrow

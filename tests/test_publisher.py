@@ -54,8 +54,8 @@ def setup(tmp_path: Path):
             # PNG 매직 바이트는 8바이트 전부 있어야 sniff()가 인식한다.
             gen.write_bytes(b"\x89PNG\r\n\x1a\n" + b"gen")
 
-            assignment[(day.date, gender)] = analysis
-            generated[(day.date, gender)] = gen
+            assignment[(day.date, gender, 0)] = analysis
+            generated[(day.date, gender, 0)] = gen
 
     return assignment, generated, week, tmp_path / "outputs"
 
@@ -118,12 +118,12 @@ def test_publish_writes_week_summary(setup):
     assignment, generated, week, out = setup
     root = publish(assignment, week, generated, output_root=out)
 
-    assert (root / "_주간요약.docx").exists()
+    assert (root / "_요약.docx").exists()
 
 
 def test_publish_skips_empty_slot_without_crashing(setup):
     assignment, generated, week, out = setup
-    empty_key = (week[0].date, Gender.MEN)
+    empty_key = (week[0].date, Gender.MEN, 0)
     assignment[empty_key] = None
     generated.pop(empty_key)
 
@@ -136,7 +136,7 @@ def test_publish_skips_empty_slot_without_crashing(setup):
 def test_publish_preserves_generated_image_format(setup):
     """생성물이 PNG면 발행용도 .png다. 확장자와 내용이 어긋나면 안 된다."""
     assignment, generated, week, out = setup
-    key = (week[0].date, Gender.MEN)
+    key = (week[0].date, Gender.MEN, 0)
     generated[key].write_bytes(b"\x89PNG\r\n\x1a\n" + b"body")
 
     root = publish(assignment, week, generated, output_root=out)
@@ -154,7 +154,7 @@ def test_publish_preserves_generated_jpeg_format(setup):
     포맷도 함께 확인해야 한다.
     """
     assignment, generated, week, out = setup
-    key = (week[0].date, Gender.WOMEN)
+    key = (week[0].date, Gender.WOMEN, 0)
     generated[key].write_bytes(b"\xff\xd8" + b"jpeg-body")
 
     root = publish(assignment, week, generated, output_root=out)
@@ -167,21 +167,21 @@ def test_publish_preserves_generated_jpeg_format(setup):
 def test_publish_survives_corrupt_generated_image(setup):
     """최종 컨펌 이후 단계다. 이미지 한 장이 깨져도 주 전체를 날리지 않는다."""
     assignment, generated, week, out = setup
-    generated[(week[0].date, Gender.MEN)].write_bytes(b"not an image at all")
+    generated[(week[0].date, Gender.MEN, 0)].write_bytes(b"not an image at all")
 
     root = publish(assignment, week, generated, output_root=out)
 
     men_dir = root / week[0].folder_name / "men"
     assert not list(men_dir.glob(f"{PUBLISH_STEM}.*"))  # 발행용은 못 만든다
     assert (men_dir / "analysis.json").exists()          # 나머지는 정상
-    assert (root / "_주간요약.docx").exists()
+    assert (root / "_요약.docx").exists()
     # 다른 요일은 영향을 받지 않는다
     assert list((root / week[1].folder_name / "men").glob(f"{PUBLISH_STEM}.*"))
 
 
 def test_publish_survives_corrupt_reference_image(setup):
     assignment, generated, week, out = setup
-    assignment[(week[0].date, Gender.MEN)].image_path.write_bytes(b"")
+    assignment[(week[0].date, Gender.MEN, 0)].image_path.write_bytes(b"")
 
     root = publish(assignment, week, generated, output_root=out)
 

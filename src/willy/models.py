@@ -111,5 +111,5 @@ class Warning:
     message: str
 
 
-# (date, Gender) -> LookAnalysis | None
-Assignment = dict[tuple[date, Gender], LookAnalysis | None]
+# (date, Gender, pick index 0..picks_per_gender-1) -> LookAnalysis | None
+Assignment = dict[tuple[date, Gender, int], LookAnalysis | None]

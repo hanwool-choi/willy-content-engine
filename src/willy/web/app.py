@@ -57,6 +57,7 @@ def _serialize(state: PipelineState) -> dict:
             {
                 "date": slot_date.isoformat(),
                 "gender": gender.value,
+                "pick": pick,
                 "look_id": look.look_id if look else None,
                 "source": look.source if look else None,
                 "temp_range": list(look.temp_range) if look else None,
@@ -64,13 +65,14 @@ def _serialize(state: PipelineState) -> dict:
                 "empty": look is None,
                 "image_url": f"/api/image/{look.look_id}" if look else None,
                 "generated_url": (
-                    f"/api/generated/{slot_date.isoformat()}/{gender.value}"
-                    if (slot_date, gender) in state.generated
+                    f"/api/generated/{slot_date.isoformat()}/{gender.value}/{pick}"
+                    if (slot_date, gender, pick) in state.generated
                     else None
                 ),
             }
-            for (slot_date, gender), look in sorted(
-                state.assignment.items(), key=lambda kv: (kv[0][0], kv[0][1].value)
+            for (slot_date, gender, pick), look in sorted(
+                state.assignment.items(),
+                key=lambda kv: (kv[0][0], kv[0][1].value, kv[0][2]),
             )
         ],
         "warnings": [
@@ -111,12 +113,12 @@ def create_app(pipeline_factory: Callable[[], Pipeline]) -> FastAPI:
             raise HTTPException(404, "이미지를 찾을 수 없습니다.")
         return _serve(match.image_path)
 
-    @app.get("/api/generated/{slot_date}/{gender}")
-    def generated_image(slot_date: date, gender: Gender) -> FileResponse:
+    @app.get("/api/generated/{slot_date}/{gender}/{pick}")
+    def generated_image(slot_date: date, gender: Gender, pick: int) -> FileResponse:
         state = ctx["state"]
         if state is None:
             raise HTTPException(404, "생성된 이미지가 없습니다.")
-        return _serve(state.generated.get((slot_date, gender)))
+        return _serve(state.generated.get((slot_date, gender, pick)))
 
     @app.post("/api/gather")
     def gather(request: GatherRequest) -> dict:

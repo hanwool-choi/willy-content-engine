@@ -8,7 +8,7 @@
   .day { border: 1px solid #ddd; border-radius: 8px; padding: 10px; min-width: 110px; }
   .day.rainy { border-color: #3b82f6; background: #eff6ff; }
   .day.coarse { opacity: .7; }
-  .slots { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+  .slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
   .slot { border: 1px solid #ddd; border-radius: 8px; padding: 8px; font-size: 12px; }
   .slot.empty { border-style: dashed; color: #b91c1c; }
 
@@ -122,7 +122,7 @@
               <figcaption>발행용</figcaption>
             </figure>` : ""}
           </div>`}
-        ${esc(s.date.slice(5))} · ${esc(s.gender)}<br />
+        ${esc(s.date.slice(5))} · ${esc(s.gender)} · ${esc(s.pick + 1)}<br />
         ${s.empty ? "비어 있음" : esc(s.look_id)}<br />
         ${s.temp_range ? esc(s.temp_range.join("~")) + "℃" : ""}<br />
         ${esc(s.style_tags.join(", "))}

@@ -46,6 +46,8 @@ def build_pipeline() -> Pipeline:
         preset=load_preset(PROJECT_ROOT / "presets" / "concept_v1.yaml"),
         output_root=settings.output_root,
         looks_per_source=settings.looks_per_source,
+        horizon_days=settings.horizon_days,
+        picks_per_gender=settings.picks_per_gender,
     )
 
 

@@ -8,9 +8,9 @@ from willy.pipeline import Pipeline
 
 
 class FakeWeather:
-    def get_week_forecast(self, base_date: date) -> list[DayWeather]:
+    def get_week_forecast(self, base_date: date, days: int = 7) -> list[DayWeather]:
         out = []
-        for i in range(7):
+        for i in range(days):
             d = base_date + timedelta(days=i)
             out.append(
                 DayWeather(
@@ -88,8 +88,10 @@ def pipeline(tmp_path: Path) -> Pipeline:
 def test_gather_produces_week_and_assignment(pipeline: Pipeline):
     state = pipeline.gather(base_date=date(2026, 8, 3))
 
-    assert len(state.week) == 7
-    assert len(state.assignment) == 14
+    # 기본 설정은 내일 하루, 성별당 2픽 = 4칸이다.
+    assert len(state.week) == 1
+    assert state.week[0].date == date(2026, 8, 4)  # base_date(8/3)의 다음날
+    assert len(state.assignment) == 4
 
 
 def test_gather_does_not_write_to_outputs(pipeline: Pipeline, tmp_path: Path):
@@ -129,22 +131,30 @@ def test_finalize_writes_outputs_and_marks_usage(pipeline: Pipeline, tmp_path: P
 
     assert root.exists()
     assert root.name == "2026-08_W1"
-    assert (root / "_주간요약.docx").exists()
+    assert (root / "_요약.docx").exists()
 
     # 발행용 이미지가 실제로 복사되었는지. 픽스처 바이트가 깨져 있으면
     # publish가 조용히 건너뛰므로 여기서 잡는다.
-    published = list(root.glob("*/*/발행용.*"))
+    published = list(root.glob("*/*/발행용*.*"))  # 픽이 여럿이면 발행용_1, 발행용_2
     assert published, "발행용 이미지가 하나도 만들어지지 않았다"
 
-    # 사용 이력이 남아야 4주 내 재등장이 막힌다.
-    used = pipeline.archive.find_substitute(
+    # 사용 이력이 남아야 4주 내 재등장이 막힌다. 하루치만 배정하므로 수집분
+    # 대부분은 미사용으로 남는 게 정상이고, '배정된 것'만 후보에서 빠져야 한다.
+    assigned_ids = {
+        look.look_id for look in state.assignment.values() if look is not None
+    }
+    assert assigned_ids, "배정된 룩이 하나도 없다"
+
+    unassigned_ids = {look.look_id for look in state.looks} - assigned_ids
+    leftover = pipeline.archive.find_substitute(
         temp=26.0,
         rain_ok=True,
         season="summer",
         gender=Gender.MEN,
-        as_of=date(2026, 8, 10),  # 배정 주간 직후 기준으로 고정한다
+        as_of=date(2026, 8, 10),  # 배정일 직후 기준으로 고정한다
+        exclude_ids=unassigned_ids,  # 미배정분을 빼면 사용 처리된 것만 남는다
     )
-    assert used is None
+    assert leftover is None, f"사용 처리된 룩이 다시 후보로 나왔다: {leftover}"
 
 
 def test_gather_skips_look_whose_analysis_fails(pipeline: Pipeline):

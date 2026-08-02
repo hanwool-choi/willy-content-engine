@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from willy.archive import Archive
@@ -27,7 +27,7 @@ class PipelineState:
     looks: list[LookAnalysis]
     assignment: Assignment
     warnings: list[Warning]
-    generated: dict[tuple[date, Gender], Path] = field(default_factory=dict)
+    generated: dict[tuple[date, Gender, int], Path] = field(default_factory=dict)
 
 
 class Pipeline:
@@ -40,7 +40,9 @@ class Pipeline:
         archive: Archive,
         preset,
         output_root: Path,
-        looks_per_source: int = 20,
+        looks_per_source: int = 4,
+        horizon_days: int = 1,
+        picks_per_gender: int = 2,
     ):
         self.weather_client = weather_client
         self.collector = collector
@@ -50,10 +52,18 @@ class Pipeline:
         self.preset = preset
         self.output_root = output_root
         self.looks_per_source = looks_per_source
+        self.horizon_days = horizon_days
+        self.picks_per_gender = picks_per_gender
 
     def gather(self, base_date: date) -> PipelineState:
-        """수집 -> 분석 -> 날씨 -> 배정. 1차 컨펌 대상."""
-        week = self.weather_client.get_week_forecast(base_date)
+        """수집 -> 분석 -> 날씨 -> 배정. 1차 컨펌 대상.
+
+        계획 대상은 base_date 당일이 아니라 '내일', 즉 base_date + 1일부터다.
+        """
+        plan_start = base_date + timedelta(days=1)
+        week = self.weather_client.get_week_forecast(
+            plan_start, days=self.horizon_days
+        )
 
         raw_looks = self.collector.collect(
             list(SOURCE_SPECS.values()), limit_per_source=self.looks_per_source
@@ -70,16 +80,18 @@ class Pipeline:
             looks.append(analysis)
             self.archive.save(analysis)
 
-        assignment, warnings = assign(looks, week, archive=self.archive)
+        assignment, warnings = assign(
+            looks, week, archive=self.archive, picks_per_gender=self.picks_per_gender
+        )
         return PipelineState(
             week=week, looks=looks, assignment=assignment, warnings=warnings
         )
 
     def generate_images(self, state: PipelineState) -> PipelineState:
         """AI 재생성. 1차 컨펌 이후에만 호출된다."""
-        generated: dict[tuple[date, Gender], Path] = {}
+        generated: dict[tuple[date, Gender, int], Path] = {}
 
-        for (slot_date, gender), analysis in state.assignment.items():
+        for (slot_date, gender, pick), analysis in state.assignment.items():
             if analysis is None or analysis.image_path is None:
                 continue
             if not analysis.image_path.exists():
@@ -90,7 +102,7 @@ class Pipeline:
                 )
                 continue
             try:
-                generated[(slot_date, gender)] = self.generator.generate(
+                generated[(slot_date, gender, pick)] = self.generator.generate(
                     analysis.image_path, analysis, self.preset, self.preset.strength
                 )
             except Exception:
@@ -105,7 +117,7 @@ class Pipeline:
             state.assignment, state.week, state.generated, self.output_root
         )
 
-        for (slot_date, _gender), analysis in state.assignment.items():
+        for (slot_date, _gender, _pick), analysis in state.assignment.items():
             if analysis is not None:
                 self.archive.mark_used(analysis.look_id, used_on=slot_date)
 

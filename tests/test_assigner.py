@@ -86,7 +86,7 @@ def test_assign_leaves_empty_slot_rather_than_forcing_bad_match():
 
     # 남성 후보는 7개 다 있지만 전부 기온이 안 맞는다. WOMEN 풀이 비어서가 아니라
     # MAX_ACCEPTABLE 가드 때문에 비어야 한다.
-    men_slots = [v for (_d, g), v in assignment.items() if g is Gender.MEN]
+    men_slots = [v for (_d, g, _p), v in assignment.items() if g is Gender.MEN]
     assert len(men_slots) == 7
     assert all(v is None for v in men_slots)
     assert WarningCode.EMPTY_SLOT in [w.code for w in warnings]
@@ -107,8 +107,8 @@ def test_assign_prefers_globally_optimal_over_greedy():
 
     assignment, _ = assign(looks, week)
 
-    assert assignment[(week[0].date, Gender.MEN)].look_id == "fairweather"
-    assert assignment[(week[1].date, Gender.MEN)].look_id == "rainproof"
+    assert assignment[(week[0].date, Gender.MEN, 0)].look_id == "fairweather"
+    assert assignment[(week[1].date, Gender.MEN, 0)].look_id == "rainproof"
 
 
 def test_assign_uses_archive_substitute_on_rainy_day(tmp_path: Path):
@@ -122,7 +122,7 @@ def test_assign_uses_archive_substitute_on_rainy_day(tmp_path: Path):
 
     assignment, warnings = assign(looks, week, archive=archive)
 
-    assert assignment[(week[0].date, Gender.MEN)].look_id == "rain_backup"
+    assert assignment[(week[0].date, Gender.MEN, 0)].look_id == "rain_backup"
     # 우천 대체는 RAIN_SUBSTITUTE 하나만 남긴다. 한 사건에 경고 하나.
     codes = [w.code for w in warnings]
     assert WarningCode.RAIN_SUBSTITUTE in codes
@@ -141,7 +141,7 @@ def test_assign_uses_archive_fallback_on_dry_day(tmp_path: Path):
 
     assignment, warnings = assign(looks, week, archive=archive)
 
-    assert assignment[(week[0].date, Gender.MEN)].look_id == "backup"
+    assert assignment[(week[0].date, Gender.MEN, 0)].look_id == "backup"
     assert WarningCode.ARCHIVE_FALLBACK in [w.code for w in warnings]
 
 
@@ -158,7 +158,7 @@ def test_assign_never_reuses_the_same_archive_look_twice(tmp_path: Path):
 
     assignment, _ = assign(looks, week, archive=archive)
 
-    picked = [assignment[(d.date, Gender.MEN)].look_id for d in week]
+    picked = [assignment[(d.date, Gender.MEN, 0)].look_id for d in week]
     assert len(set(picked)) == 2, f"같은 룩이 두 번 배정됨: {picked}"
 
 
@@ -180,12 +180,12 @@ def test_assign_fallback_does_not_steal_a_later_days_pool_look(tmp_path: Path):
     assignment, _ = assign([good, bad], week, archive=archive)
 
     ids = [
-        assignment[(d.date, Gender.MEN)].look_id
+        assignment[(d.date, Gender.MEN, 0)].look_id
         for d in week
-        if assignment[(d.date, Gender.MEN)] is not None
+        if assignment[(d.date, Gender.MEN, 0)] is not None
     ]
     assert len(ids) == len(set(ids)), f"같은 룩이 두 번 배정됨: {ids}"
-    assert assignment[(week[1].date, Gender.MEN)].look_id == "good"
+    assert assignment[(week[1].date, Gender.MEN, 0)].look_id == "good"
 
 
 def test_assign_dry_day_fallback_accepts_rain_capable_look(tmp_path: Path):
@@ -200,5 +200,44 @@ def test_assign_dry_day_fallback_accepts_rain_capable_look(tmp_path: Path):
 
     assignment, warnings = assign(looks, week, archive=archive)
 
-    assert assignment[(week[0].date, Gender.MEN)].look_id == "rain_capable"
+    assert assignment[(week[0].date, Gender.MEN, 0)].look_id == "rain_capable"
     assert WarningCode.ARCHIVE_FALLBACK in [w.code for w in warnings]
+
+
+def test_assign_produces_two_picks_per_gender_for_one_day_horizon():
+    """내일 뭐입지?의 새 모양: 하루 × 성별 2 × 픽 2 = 4칸."""
+    looks = [look(f"m{i}", (20, 30)) for i in range(4)]
+    looks += [look(f"w{i}", (20, 30), gender=Gender.WOMEN) for i in range(4)]
+    one_day = [day(0)]
+
+    assignment, warnings = assign(looks, one_day, picks_per_gender=2)
+
+    assert len(assignment) == 4  # 1일 * 성별 2 * 픽 2
+    assert all(v is not None for v in assignment.values())
+    assert warnings == []
+
+
+def test_assign_gives_distinct_looks_to_the_two_picks_of_one_gender():
+    """같은 요일, 같은 성별의 두 픽은 서로 다른 룩이어야 한다."""
+    looks = [look(f"m{i}", (20, 30)) for i in range(4)]
+    one_day = [day(0)]
+
+    assignment, _ = assign(looks, one_day, picks_per_gender=2)
+
+    first = assignment[(one_day[0].date, Gender.MEN, 0)]
+    second = assignment[(one_day[0].date, Gender.MEN, 1)]
+    assert first is not None
+    assert second is not None
+    assert first.look_id != second.look_id
+
+
+def test_assign_pool_too_small_scales_with_picks_per_gender():
+    """POOL_TOO_SMALL 기준은 이제 요일수 * 2 * picks_per_gender다."""
+    looks = [look("only", (20, 30))]
+    one_day = [day(0)]
+
+    # 1일 * 성별 2 * 픽 2 = 4개가 필요한데 1개뿐이다.
+    assignment, warnings = assign(looks, one_day, picks_per_gender=2)
+
+    codes = [w.code for w in warnings]
+    assert WarningCode.POOL_TOO_SMALL in codes

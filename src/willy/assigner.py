@@ -1,4 +1,4 @@
-"""요일 7 × 성별 2 = 14칸에 룩을 최적 배정한다."""
+"""요일 × 성별 × 픽 개수 칸에 룩을 최적 배정한다."""
 from __future__ import annotations
 
 import numpy as np
@@ -38,44 +38,53 @@ def _assign_one_gender(
     assignment: Assignment,
     warnings: list[Warning],
     used_ids: set[str],
+    picks_per_gender: int,
 ) -> None:
     pool = [look for look in looks if look.gender == gender]
 
+    # 행 = (요일, 픽) 쌍. 같은 요일이 picks_per_gender번 반복해서 나타난다.
+    slots = [(day, pick) for day in week for pick in range(picks_per_gender)]
+
     if not pool:
-        for day in week:
-            assignment[(day.date, gender)] = None
+        for day, pick in slots:
+            assignment[(day.date, gender, pick)] = None
             warnings.append(
                 Warning(
                     code=WarningCode.EMPTY_SLOT,
                     slot_date=day.date,
                     gender=gender,
-                    message=f"{day.weekday_ko}요일 {gender.value}: 후보 룩이 없습니다.",
+                    message=(
+                        f"{day.weekday_ko}요일 {gender.value} 픽{pick + 1}: "
+                        f"후보 룩이 없습니다."
+                    ),
                 )
             )
         return
 
-    # 행=요일, 열=룩. 헝가리안은 정사각이 아니어도 동작한다.
+    # 행=(요일,픽), 열=룩. 헝가리안은 정사각이 아니어도 동작하며, 열(룩)은
+    # 행 하나에만 배정되므로 같은 요일의 두 픽은 자동으로 서로 다른 룩이 된다.
     matrix = np.array(
-        [[assignment_cost(look, day) for look in pool] for day in week], dtype=float
+        [[assignment_cost(look, day) for look in pool] for day, _pick in slots],
+        dtype=float,
     )
     rows, cols = linear_sum_assignment(matrix)
     chosen = {int(r): int(c) for r, c in zip(rows, cols)}
 
     # 헝가리안이 확정한 픽을 미리 예약한다. gather()가 오늘 수집분도 아카이브에
-    # 저장하므로, 예약하지 않으면 앞 요일의 폴백이 뒤 요일 몫을 그대로 꺼내가
-    # 같은 룩이 두 요일에 배정된다.
+    # 저장하므로, 예약하지 않으면 앞 슬롯의 폴백이 뒤 슬롯 몫을 그대로 꺼내가
+    # 같은 룩이 두 번 배정된다.
     used_ids.update(
         pool[col].look_id
         for i, col in chosen.items()
         if matrix[i][col] <= MAX_ACCEPTABLE
     )
 
-    for i, day in enumerate(week):
+    for i, (day, pick) in enumerate(slots):
         col = chosen.get(i)
         picked = pool[col] if col is not None else None
 
         if picked is not None and matrix[i][col] <= MAX_ACCEPTABLE:
-            assignment[(day.date, gender)] = picked
+            assignment[(day.date, gender, pick)] = picked
             used_ids.add(picked.look_id)
             continue
 
@@ -91,7 +100,7 @@ def _assign_one_gender(
             )
 
         if substitute is not None:
-            assignment[(day.date, gender)] = substitute
+            assignment[(day.date, gender, pick)] = substitute
             used_ids.add(substitute.look_id)
             code = (
                 WarningCode.RAIN_SUBSTITUTE if day.is_rainy
@@ -103,20 +112,20 @@ def _assign_one_gender(
                     slot_date=day.date,
                     gender=gender,
                     message=(
-                        f"{day.weekday_ko}요일 {gender.value}: "
+                        f"{day.weekday_ko}요일 {gender.value} 픽{pick + 1}: "
                         f"아카이브에서 '{substitute.look_id}'로 대체했습니다."
                     ),
                 )
             )
         else:
-            assignment[(day.date, gender)] = None
+            assignment[(day.date, gender, pick)] = None
             warnings.append(
                 Warning(
                     code=WarningCode.EMPTY_SLOT,
                     slot_date=day.date,
                     gender=gender,
                     message=(
-                        f"{day.weekday_ko}요일 {gender.value}: "
+                        f"{day.weekday_ko}요일 {gender.value} 픽{pick + 1}: "
                         f"맞는 룩이 없어 비워둡니다. 직접 추가해 주세요."
                     ),
                 )
@@ -127,13 +136,14 @@ def assign(
     looks: list[LookAnalysis],
     week: list[DayWeather],
     archive: Archive | None = None,
+    picks_per_gender: int = 1,
 ) -> tuple[Assignment, list[Warning]]:
     """전역 최적 배정. 맞는 룩이 없으면 억지로 채우지 않고 비워둔다."""
     assignment: Assignment = {}
     warnings: list[Warning] = []
     used_ids: set[str] = set()
 
-    required = len(week) * 2
+    required = len(week) * 2 * picks_per_gender
     if len(looks) < required:
         warnings.append(
             Warning(
@@ -145,6 +155,9 @@ def assign(
         )
 
     for gender in (Gender.MEN, Gender.WOMEN):
-        _assign_one_gender(looks, week, gender, archive, assignment, warnings, used_ids)
+        _assign_one_gender(
+            looks, week, gender, archive, assignment, warnings, used_ids,
+            picks_per_gender,
+        )
 
     return assignment, warnings

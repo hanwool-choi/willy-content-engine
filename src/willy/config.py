@@ -26,7 +26,9 @@ SEOUL_LON = 126.978
 class Settings:
     kma_service_key: str
     anthropic_api_key: str
-    looks_per_source: int = 20
+    horizon_days: int = 1
+    picks_per_gender: int = 2
+    looks_per_source: int = 4
     output_root: Path = PROJECT_ROOT / "outputs"
     archive_db: Path = PROJECT_ROOT / "archive" / "looks.db"
     workspace: Path = PROJECT_ROOT / ".workspace"

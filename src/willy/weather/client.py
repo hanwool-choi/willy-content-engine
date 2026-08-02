@@ -89,8 +89,8 @@ class WeatherClient:
             raise WeatherApiError(f"{type(exc).__name__} — {_redact(url)}") from None
         return response.json()
 
-    def get_week_forecast(self, base_date: date) -> list[DayWeather]:
-        """서울 7일 예보. 단기(0~3일) + 중기(3~10일)를 병합한다.
+    def get_week_forecast(self, base_date: date, days: int = 7) -> list[DayWeather]:
+        """서울 `days`일 예보. 단기(0~3일) + 중기(3~10일)를 병합한다.
 
         한쪽이 실패해도 다른 쪽으로 최대한 채운다. 예보는 콘텐츠 신뢰도에
         직결되므로 부분 실패를 전체 실패로 만들지 않는다.
@@ -123,4 +123,4 @@ class WeatherClient:
         except Exception:
             log.exception("중기예보 조회 실패")
 
-        return merge_forecasts(short=short, mid=mid, base_date=base_date)
+        return merge_forecasts(short=short, mid=mid, base_date=base_date, days=days)

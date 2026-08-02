@@ -46,7 +46,7 @@ def write_item_doc(path: Path, day: DayWeather, entries: dict[Gender, list[dict]
 
 def write_week_summary(path: Path, week: list[DayWeather], assignment: Assignment) -> None:
     doc = Document()
-    doc.add_heading("이번주 [내일 뭐입지?] 요약", level=1)
+    doc.add_heading("[내일 뭐입지?] 요약", level=1)
 
     table = doc.add_table(rows=1, cols=5)
     table.style = "Table Grid"
@@ -54,15 +54,14 @@ def write_week_summary(path: Path, week: list[DayWeather], assignment: Assignmen
         table.rows[0].cells[i].text = name
 
     for day in week:
-        men = assignment.get((day.date, Gender.MEN))
-        women = assignment.get((day.date, Gender.WOMEN))
-        filled = sum(1 for x in (men, women) if x is not None)
+        slots = [v for (d, _g, _p), v in assignment.items() if d == day.date]
+        filled = sum(1 for v in slots if v is not None)
 
         cells = table.add_row().cells
         cells[0].text = day.date.isoformat()
         cells[1].text = day.weekday_ko
         cells[2].text = day.sky
         cells[3].text = f"{day.temp_max}/{day.temp_min}℃"
-        cells[4].text = f"{filled}/2"
+        cells[4].text = f"{filled}/{len(slots)}"
 
     doc.save(str(path))
