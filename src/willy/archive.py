@@ -103,17 +103,18 @@ class Archive:
         """열린 연결을 닫는다. 서버가 계속 떠 있으므로 GC에 맡기지 않는다."""
         self._conn.close()
 
-    def find_substitute(
+    def find_similar(
         self,
         temp: float,
         rain_ok: bool | None,
         season: str,
         gender: Gender,
+        limit: int = 1,
         exclude_recent_weeks: int = 4,
         exclude_ids: set[str] | None = None,
         as_of: date | None = None,
-    ) -> LookAnalysis | None:
-        """조건에 맞는 룩 중 기온이 가장 가까운 것 하나.
+    ) -> list[LookAnalysis]:
+        """조건에 맞는 룩을 기온이 가까운 순으로 최대 limit개.
 
         rain_ok=None이면 우천 가능 여부를 따지지 않는다. 맑은 날에 비에도
         입을 수 있는 룩을 굳이 뺄 이유가 없다.
@@ -149,16 +150,40 @@ class Archive:
             params.extend(sorted(exclude_ids))
 
         params.append(temp)  # ORDER BY
+        params.append(max(0, limit))
 
-        row = self._conn.execute(
+        rows = self._conn.execute(
             f"""SELECT * FROM looks
                 WHERE {" AND ".join(clauses)}
                 ORDER BY ABS((temp_min + temp_max) / 2.0 - ?) ASC, look_id ASC
-                LIMIT 1""",
+                LIMIT ?""",
             params,
-        ).fetchone()
+        ).fetchall()
 
-        return self._to_look(row) if row else None
+        return [self._to_look(row) for row in rows]
+
+    def find_substitute(
+        self,
+        temp: float,
+        rain_ok: bool | None,
+        season: str,
+        gender: Gender,
+        exclude_recent_weeks: int = 4,
+        exclude_ids: set[str] | None = None,
+        as_of: date | None = None,
+    ) -> LookAnalysis | None:
+        """find_similar의 단수형. 배정 실패 시 대체 룩 하나를 찾는다."""
+        found = self.find_similar(
+            temp=temp,
+            rain_ok=rain_ok,
+            season=season,
+            gender=gender,
+            limit=1,
+            exclude_recent_weeks=exclude_recent_weeks,
+            exclude_ids=exclude_ids,
+            as_of=as_of,
+        )
+        return found[0] if found else None
 
     @staticmethod
     def _to_look(row: sqlite3.Row) -> LookAnalysis:

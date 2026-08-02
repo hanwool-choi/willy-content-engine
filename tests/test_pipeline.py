@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from willy.models import DayWeather, Gender, LookAnalysis, RawLook
+from willy.models import WarningCode, DayWeather, Gender, LookAnalysis, RawLook
 from willy.pipeline import Pipeline
 
 
@@ -222,3 +222,56 @@ def test_full_flow_with_insufficient_looks_still_completes(tmp_path: Path):
     state = pipeline.generate_images(state)
     root = pipeline.finalize(state)
     assert root.exists()
+
+
+def _stub_looks(pipeline: Pipeline, count: int) -> None:
+    """수집분을 count장으로 줄인다. 풀이 얇은 상황을 만든다."""
+    pipeline.collector.count = count
+
+
+def test_gather_tops_up_a_thin_pool_from_the_archive(pipeline: Pipeline):
+    """수집이 적게 되면 아카이브의 비슷한 룩으로 채운다.
+
+    외부를 다시 두드리지도, 비전 분석을 새로 하지도 않는다.
+    """
+    # 먼저 한 번 돌려 아카이브를 채운다.
+    pipeline.gather(base_date=date(2026, 8, 3))
+
+    # 이번엔 수집이 2장뿐인 상황
+    _stub_looks(pipeline, 2)
+    state = pipeline.gather(base_date=date(2026, 8, 3))
+
+    assert len(state.looks) > 2, "아카이브에서 보충되지 않았다"
+    codes = [w.code for w in state.warnings]
+    assert WarningCode.ARCHIVE_FALLBACK in codes
+
+
+def test_top_up_respects_the_minimum_per_gender(pipeline: Pipeline):
+    """성별당 min_pool_per_gender까지만 채운다. 무한정 끌어오지 않는다."""
+    pipeline.gather(base_date=date(2026, 8, 3))
+
+    _stub_looks(pipeline, 0)
+    state = pipeline.gather(base_date=date(2026, 8, 3))
+
+    for gender in (Gender.MEN, Gender.WOMEN):
+        count = sum(1 for look in state.looks if look.gender == gender)
+        assert count <= pipeline.min_pool_per_gender
+
+
+def test_top_up_does_not_duplicate_looks(pipeline: Pipeline):
+    """보충한 룩이 이미 수집분에 있는 것과 겹치면 안 된다."""
+    pipeline.gather(base_date=date(2026, 8, 3))
+
+    _stub_looks(pipeline, 3)
+    state = pipeline.gather(base_date=date(2026, 8, 3))
+
+    ids = [look.look_id for look in state.looks]
+    assert len(ids) == len(set(ids)), f"중복: {ids}"
+
+
+def test_no_top_up_when_the_pool_is_already_full(pipeline: Pipeline):
+    """풀이 충분하면 아카이브를 건드리지 않는다."""
+    state = pipeline.gather(base_date=date(2026, 8, 3))
+
+    codes = [w.code for w in state.warnings]
+    assert WarningCode.ARCHIVE_FALLBACK not in codes

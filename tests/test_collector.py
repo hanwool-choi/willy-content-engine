@@ -88,7 +88,8 @@ def make_collector(tmp_path: Path, page: FakePage, downloader=None) -> Collector
     return Collector(
         workspace=tmp_path,
         page_factory=lambda: contextlib.nullcontext(page),
-        downloader=downloader or (lambda url, dest: dest.write_bytes(b"\xff\xd8original")),
+        downloader=downloader
+        or (lambda url, dest: dest.write_bytes(b"\xff\xd8" + url.encode())),
     )
 
 
@@ -98,7 +99,7 @@ def test_collect_downloads_original_when_url_present(tmp_path: Path):
 
     assert len(looks) == 1
     assert looks[0].capture_method == "original_url"
-    assert looks[0].image_path.read_bytes() == b"\xff\xd8original"
+    assert looks[0].image_path.read_bytes() == b"\xff\xd8https://cdn.test/a.jpg"
     assert looks[0].source_url == "https://x.test/1"
 
 
@@ -214,7 +215,7 @@ def test_collect_closes_the_page_context(tmp_path: Path):
     collector = Collector(
         workspace=tmp_path,
         page_factory=factory,
-        downloader=lambda url, dest: dest.write_bytes(b"\xff\xd8original"),
+        downloader=lambda url, dest: dest.write_bytes(b"\xff\xd8" + url.encode()),
     )
     collector.collect([spec()], limit_per_source=5)
 
@@ -276,3 +277,46 @@ def test_collect_uses_the_cards_own_href_when_it_is_the_link(tmp_path: Path):
     looks = make_collector(tmp_path, page).collect([uniqlo], limit_per_source=5)
 
     assert looks[0].source_url == "/stylingbook/1"
+
+
+def test_collect_drops_duplicate_images_within_a_source(tmp_path: Path):
+    """무신사 스냅은 같은 사진을 목록에 두 번 싣는 경우가 있다.
+
+    그대로 두면 같은 룩을 두 번 분석해 비전 API 비용을 버리고, 배정
+    후보에도 중복으로 올라간다.
+    """
+    page = FakePage([
+        FakeElement("https://cdn.test/a.jpg"),
+        FakeElement("https://cdn.test/b.jpg"),
+        FakeElement("https://cdn.test/a.jpg"),  # 1번과 같은 사진
+    ])
+
+    looks = make_collector(tmp_path, page).collect([spec()], limit_per_source=10)
+
+    assert len(looks) == 2
+    contents = [look.image_path.read_bytes() for look in looks]
+    assert len(set(contents)) == 2
+
+
+def test_collect_drops_duplicates_across_sources(tmp_path: Path):
+    """소스가 달라도 같은 사진이면 한 번만 남긴다."""
+    page = FakePage([FakeElement("https://cdn.test/same.jpg")])
+    a = spec("musinsa_snap")
+    b = spec("uniqlo_men")
+
+    looks = make_collector(tmp_path, page).collect([a, b], limit_per_source=10)
+
+    assert len(looks) == 1
+    assert looks[0].source == "musinsa_snap"  # 먼저 본 쪽이 남는다
+
+
+def test_collect_removes_the_duplicate_file_from_disk(tmp_path: Path):
+    """중복은 건너뛰기만 하지 말고 파일도 남기지 않는다."""
+    page = FakePage([
+        FakeElement("https://cdn.test/a.jpg"),
+        FakeElement("https://cdn.test/a.jpg"),
+    ])
+
+    make_collector(tmp_path, page).collect([spec()], limit_per_source=10)
+
+    assert len(list(tmp_path.glob("musinsa_snap-*"))) == 1

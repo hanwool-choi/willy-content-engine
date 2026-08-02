@@ -12,10 +12,18 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 
+from willy.analyzer import derive_season
 from willy.archive import Archive
 from willy.assigner import assign
 from willy.collector.sources import SOURCE_SPECS
-from willy.models import Assignment, DayWeather, Gender, LookAnalysis, Warning
+from willy.models import (
+    Assignment,
+    DayWeather,
+    Gender,
+    LookAnalysis,
+    Warning,
+    WarningCode,
+)
 from willy.publisher.folders import publish
 
 log = logging.getLogger(__name__)
@@ -43,6 +51,7 @@ class Pipeline:
         looks_per_source: int = 4,
         horizon_days: int = 1,
         picks_per_gender: int = 2,
+        min_pool_per_gender: int = 4,
     ):
         self.weather_client = weather_client
         self.collector = collector
@@ -54,6 +63,7 @@ class Pipeline:
         self.looks_per_source = looks_per_source
         self.horizon_days = horizon_days
         self.picks_per_gender = picks_per_gender
+        self.min_pool_per_gender = min_pool_per_gender
 
     def gather(self, base_date: date) -> PipelineState:
         """수집 -> 분석 -> 날씨 -> 배정. 1차 컨펌 대상.
@@ -80,12 +90,66 @@ class Pipeline:
             looks.append(analysis)
             self.archive.save(analysis)
 
+        looks, topup_warnings = self._top_up_from_archive(looks, week[0])
+
         assignment, warnings = assign(
             looks, week, archive=self.archive, picks_per_gender=self.picks_per_gender
         )
         return PipelineState(
-            week=week, looks=looks, assignment=assignment, warnings=warnings
+            week=week,
+            looks=looks,
+            assignment=assignment,
+            warnings=topup_warnings + warnings,
         )
+
+    def _top_up_from_archive(
+        self, looks: list[LookAnalysis], day: DayWeather
+    ) -> tuple[list[LookAnalysis], list[Warning]]:
+        """수집 풀이 얇으면 아카이브에서 비슷한 계절·기온의 룩으로 채운다.
+
+        외부 사이트를 다시 두드리지 않고 비전 분석도 새로 하지 않는다.
+        이미 분석해 저장해둔 것을 꺼내 쓰는 것이라 추가 비용이 없다.
+        """
+        warnings: list[Warning] = []
+        have = {look.look_id for look in looks}
+
+        for gender in (Gender.MEN, Gender.WOMEN):
+            current = [look for look in looks if look.gender == gender]
+            shortfall = self.min_pool_per_gender - len(current)
+            if shortfall <= 0:
+                continue
+
+            # 그 성별 수집분이 아예 없으면 계절을 날씨에서 파생한다.
+            season = current[0].season if current else derive_season(
+                day.temp_repr, day.date.month
+            )
+
+            extra = self.archive.find_similar(
+                temp=day.temp_repr,
+                rain_ok=True if day.is_rainy else None,
+                season=season,
+                gender=gender,
+                limit=shortfall,
+                exclude_ids=have,
+            )
+            if not extra:
+                continue
+
+            looks.extend(extra)
+            have.update(look.look_id for look in extra)
+            warnings.append(
+                Warning(
+                    code=WarningCode.ARCHIVE_FALLBACK,
+                    slot_date=day.date,
+                    gender=gender,
+                    message=(
+                        f"{gender.value} 수집분이 {len(current)}장뿐이라 "
+                        f"아카이브에서 {len(extra)}장을 보충했습니다."
+                    ),
+                )
+            )
+
+        return looks, warnings
 
     def generate_images(self, state: PipelineState) -> PipelineState:
         """AI 재생성. 1차 컨펌 이후에만 호출된다."""

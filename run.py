@@ -55,6 +55,7 @@ def build_pipeline() -> Pipeline:
         looks_per_source=settings.looks_per_source,
         horizon_days=settings.horizon_days,
         picks_per_gender=settings.picks_per_gender,
+        min_pool_per_gender=settings.min_pool_per_gender,
     )
 
 

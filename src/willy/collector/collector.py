@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import shutil
 from contextlib import AbstractContextManager
@@ -49,12 +50,19 @@ class Collector:
     ) -> list[RawLook]:
         looks: list[RawLook] = []
 
+        # 같은 사진이 한 목록에 두 번 실리거나 소스끼리 겹치는 일이 실제로
+        # 있다. 그대로 두면 같은 룩을 두 번 분석해 비용을 버리고, 배정
+        # 후보에도 중복으로 올라간다. 내용 해시로 한 번만 남긴다.
+        seen: set[str] = set()
+
         # 페이지 수명을 여기서 소유한다. 호출자가 __exit__을 잊으면
         # 브라우저가 그대로 남기 때문이다.
         with self._page_factory() as page:
             for spec in sources:
                 try:
-                    looks.extend(self._collect_one(page, spec, limit_per_source))
+                    looks.extend(
+                        self._collect_one(page, spec, limit_per_source, seen)
+                    )
                 except Exception:
                     # 한 소스 실패가 전체를 무너뜨리지 않는다.
                     log.exception("소스 수집 실패: %s", spec.name)
@@ -62,7 +70,7 @@ class Collector:
         return looks
 
     def _collect_one(
-        self, page, spec: SourceSpec, limit: int
+        self, page, spec: SourceSpec, limit: int, seen: set[str]
     ) -> list[RawLook]:
         # networkidle을 쓰면 안 된다. 세 소스 모두 애널리틱스·소켓 연결이
         # 계속 살아 있어 네트워크가 조용해지는 순간이 오지 않고, goto가
@@ -98,6 +106,13 @@ class Collector:
 
             if method == "screenshot":
                 card.screenshot(path=str(dest))
+
+            digest = hashlib.sha256(dest.read_bytes()).hexdigest()
+            if digest in seen:
+                log.info("중복 사진을 건너뜁니다: %s", dest.name)
+                dest.unlink(missing_ok=True)
+                continue
+            seen.add(digest)
 
             source_url = None
             if spec.link_selector:

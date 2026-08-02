@@ -28,6 +28,8 @@ class Settings:
     anthropic_api_key: str
     horizon_days: int = 1
     picks_per_gender: int = 2
+    # 성별당 이 수에 못 미치면 아카이브에서 유사 룩으로 채운다.
+    min_pool_per_gender: int = 4
     looks_per_source: int = 4
     output_root: Path = PROJECT_ROOT / "outputs"
     archive_db: Path = PROJECT_ROOT / "archive" / "looks.db"
