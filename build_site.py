@@ -38,6 +38,33 @@ log = logging.getLogger("build_site")
 KST = timezone(timedelta(hours=9))
 
 
+def log_key_status(settings: Settings) -> None:
+    """키가 실제로 도착했는지 로그에 남긴다.
+
+    분석·텍스트 실패는 폴백에 가려 워크플로가 성공으로 끝나므로, 시크릿
+    오등록을 이 로그로만 알아챌 수 있다. 값은 절대 찍지 않고 길이와
+    형식만 본다 (기대값: Gemini 53, 기상청 디코딩 88).
+    """
+    for name, value, prefix in (
+        ("GEMINI_API_KEY", settings.gemini_api_key, "AQ."),
+        ("KMA_SERVICE_KEY", settings.kma_service_key, None),
+    ):
+        if not value:
+            log.warning("%s: 비어 있음 — 시크릿이 전달되지 않았습니다", name)
+            continue
+        notes = []
+        if value != value.strip():
+            notes.append("앞뒤 공백/줄바꿈 있음")
+        if prefix and not value.startswith(prefix):
+            notes.append(f"'{prefix}'로 시작하지 않음")
+        if "%" in value:
+            notes.append("URL 인코딩된 값으로 보임(디코딩 값을 넣어야 함)")
+        log.info(
+            "%s: 길이=%d %s", name, len(value),
+            "· ".join(notes) if notes else "형식 정상",
+        )
+
+
 def build_pipeline(settings: Settings) -> Pipeline:
     weather = (
         WeatherClient(settings.kma_service_key)
@@ -84,6 +111,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     settings = Settings.load()
+    log_key_status(settings)
     pipeline = build_pipeline(settings)
 
     # 배치는 한국 시간 아침에 돈다. 러너는 UTC라 기준일을 명시해야

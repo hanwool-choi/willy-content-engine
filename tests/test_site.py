@@ -138,3 +138,42 @@ def test_survives_empty_board_and_texts():
 
     assert "<!doctype html>" in html.lower()
     assert "수집된 룩이 없습니다" in html
+
+
+def test_renders_warnings_so_degraded_runs_are_visible():
+    """폴백은 워크플로를 성공으로 끝내므로, 페이지가 알려주지 않으면
+    분석이 빠진 날을 아무도 눈치채지 못한다."""
+    from willy.models import Warning, WarningCode
+
+    st = state_with()
+    st.warnings = [
+        Warning(
+            code=WarningCode.ANALYSIS_SKIPPED, slot_date=day().date, gender=None,
+            message="비전 분석에 실패해 분석 생략 모드로 진행합니다.",
+        )
+    ]
+
+    html = render_site(st, TEXTS, STAMP)
+
+    assert "분석 생략 모드" in html
+    assert "class=\"notice" in html
+
+
+def test_no_notice_block_when_there_are_no_warnings():
+    html = render_site(state_with(), TEXTS, STAMP)
+
+    assert "class=\"notice" not in html
+
+
+def test_warning_messages_are_escaped():
+    from willy.models import Warning, WarningCode
+
+    st = state_with()
+    st.warnings = [
+        Warning(code=WarningCode.EMPTY_SLOT, slot_date=None, gender=None,
+                message="<script>alert(9)</script>")
+    ]
+
+    html = render_site(st, TEXTS, STAMP)
+
+    assert "<script>alert(9)</script>" not in html

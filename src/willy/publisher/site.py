@@ -129,6 +129,16 @@ def render_site(
     pool = "".join(_pool_card(look) for look in state.looks)
     text_cards = "".join(_text_card(i, entry) for i, entry in enumerate(texts))
 
+    # 폴백이 동작하면 배치는 성공으로 끝난다. 페이지가 알려주지 않으면
+    # 분석·텍스트가 빠진 날을 아무도 눈치채지 못한다.
+    notice = (
+        '<div class="notice">'
+        + "<br />".join(escape(w.message) for w in state.warnings)
+        + "</div>"
+        if state.warnings
+        else ""
+    )
+
     return f"""<!doctype html>
 <html lang="ko">
 <head>
@@ -198,6 +208,8 @@ def render_site(
     background:var(--card); border:1px solid var(--line); border-radius:6px; padding:6px 12px; }}
   .text-card button:hover {{ border-color:var(--accent); }}
   .empty {{ color:var(--ink-soft); padding:20px 0; }}
+  .notice {{ margin-top:14px; padding:10px 14px; border-radius:8px; font-size:13px;
+    background:#f6edd9; color:#9a6b15; }}
   footer {{ margin-top:56px; padding-top:14px; border-top:1px solid var(--line);
     font-size:11px; color:var(--ink-soft); line-height:1.8; }}
 </style>
@@ -213,6 +225,8 @@ def render_site(
     <span class="cell"><span class="label">하늘</span><b>{escape(day.sky)}</b></span>
     <span class="cell"><span class="label">강수확률</span><b>{day.precip_prob}%</b></span>
   </section>
+
+  {notice}
 
   <h2>내일의 보드</h2>
   <div class="rule"></div>
