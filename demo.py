@@ -21,6 +21,13 @@ import zlib
 from datetime import date, datetime
 from pathlib import Path
 
+# 사내망처럼 TLS 검사 프록시가 끼어드는 환경에서는 certifi 번들만 믿는
+# httpx가 모든 외부 호출에 실패한다. OS 인증서 저장소를 신뢰하도록
+# 어떤 HTTP 클라이언트보다 먼저 주입해야 한다.
+import truststore
+
+truststore.inject_into_ssl()
+
 import uvicorn
 
 import sys

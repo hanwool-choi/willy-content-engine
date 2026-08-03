@@ -11,4 +11,5 @@ archive/
 .superpowers/
 *.egg-info/
 .claude/settings.local.json
+.claude/launch.json
 .demo_cache/
