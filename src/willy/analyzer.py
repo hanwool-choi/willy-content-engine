@@ -166,6 +166,53 @@ def _retry_delay_seconds(response) -> float | None:
     return None
 
 
+MAX_RATE_LIMIT_RETRIES = 3
+TRANSIENT_RETRY_SECONDS = 5.0
+
+
+def gemini_generate(http, api_key: str, payload: dict, sleep) -> str:
+    """generateContent 1회 호출 + 재시도. 응답의 첫 텍스트 파트를 돌려준다.
+
+    429는 서버가 알려준 RetryInfo만큼(없으면 즉시 실패), 5xx·타임아웃은
+    5초 쉬고 최대 3회 재시도한다. 분석기와 텍스트 생성기가 공유한다.
+    """
+    for _attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
+        last_try = _attempt == MAX_RATE_LIMIT_RETRIES
+        try:
+            response = http.post(
+                f"{GEMINI_BASE_URL}/models/{GEMINI_MODEL}:generateContent",
+                headers={"x-goog-api-key": api_key},
+                json=payload,
+            )
+        except httpx.TimeoutException:
+            if last_try:
+                raise
+            sleep(TRANSIENT_RETRY_SECONDS)
+            continue
+
+        if response.status_code == 429:
+            delay = _retry_delay_seconds(response)
+            if delay is None or last_try:
+                break
+            sleep(delay)
+        elif response.status_code >= 500:
+            if last_try:
+                break
+            sleep(TRANSIENT_RETRY_SECONDS)
+        else:
+            break
+    response.raise_for_status()
+
+    body = response.json()
+    try:
+        parts = body["candidates"][0]["content"]["parts"]
+        return next(part["text"] for part in parts if "text" in part)
+    except (KeyError, IndexError, StopIteration) as exc:
+        raise ValueError(
+            "분석 결과를 파싱할 수 없습니다: 응답에 텍스트가 없습니다"
+        ) from exc
+
+
 class LookAnalyzer:
     """Claude 비전 배치 분석기."""
 
@@ -214,9 +261,6 @@ class GeminiAnalyzer:
     아니라 헤더로만 보낸다.
     """
 
-    MAX_RATE_LIMIT_RETRIES = 3
-    TRANSIENT_RETRY_SECONDS = 5.0
-
     def __init__(self, api_key: str, http=None, sleep=None):
         self._api_key = api_key
         self._http = http or httpx.Client(timeout=120)
@@ -245,40 +289,4 @@ class GeminiAnalyzer:
         raise last_error
 
     def _request(self, payload: dict) -> str:
-        for _attempt in range(self.MAX_RATE_LIMIT_RETRIES + 1):
-            last_try = _attempt == self.MAX_RATE_LIMIT_RETRIES
-            try:
-                response = self._http.post(
-                    f"{GEMINI_BASE_URL}/models/{GEMINI_MODEL}:generateContent",
-                    headers={"x-goog-api-key": self._api_key},
-                    json=payload,
-                )
-            except httpx.TimeoutException:
-                if last_try:
-                    raise
-                self._sleep(self.TRANSIENT_RETRY_SECONDS)
-                continue
-
-            if response.status_code == 429:
-                # 분당 한도에는 RetryInfo가 실려 온다. 크레딧 소진처럼
-                # 기다려도 소용없는 429에는 없으므로 재시도하지 않는다.
-                delay = _retry_delay_seconds(response)
-                if delay is None or last_try:
-                    break
-                self._sleep(delay)
-            elif response.status_code >= 500:
-                if last_try:
-                    break
-                self._sleep(self.TRANSIENT_RETRY_SECONDS)
-            else:
-                break
-        response.raise_for_status()
-
-        body = response.json()
-        try:
-            parts = body["candidates"][0]["content"]["parts"]
-            return next(part["text"] for part in parts if "text" in part)
-        except (KeyError, IndexError, StopIteration) as exc:
-            raise ValueError(
-                "분석 결과를 파싱할 수 없습니다: 응답에 텍스트가 없습니다"
-            ) from exc
+        return gemini_generate(self._http, self._api_key, payload, self._sleep)

@@ -300,3 +300,33 @@ def test_payload_carries_source_url_for_lightbox(client: TestClient):
 
     assert all("source_url" in entry for entry in body["pool"])
     assert all("source_url" in slot for slot in body["slots"])
+
+
+def test_texts_endpoint_requires_gather_first(client: TestClient):
+    assert client.post("/api/texts").status_code == 409
+
+
+def test_texts_endpoint_returns_tone_variants(client: TestClient):
+    """텍스터 없이도(템플릿 폴백) 톤·본문 구조로 응답한다."""
+    client.post("/api/gather", json={"base_date": "2026-08-03"})
+
+    response = client.post("/api/texts")
+
+    assert response.status_code == 200
+    texts = response.json()["texts"]
+    assert texts and all(t["tone"] and t["text"] for t in texts)
+
+
+def test_regather_requires_gather_first(client: TestClient):
+    assert client.post("/api/regather").status_code == 409
+
+
+def test_regather_reruns_with_same_base_date(client: TestClient):
+    first = client.post("/api/gather", json={"base_date": "2026-08-03"}).json()
+
+    response = client.post("/api/regather")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["week"][0]["date"] == first["week"][0]["date"]
+    assert body["pool"]

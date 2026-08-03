@@ -50,14 +50,19 @@ class Collector:
         sources: list[SourceSpec],
         limit_per_source: int = 20,
         quotas: dict[str, int] | None = None,
+        exclude_hashes: set[str] | None = None,
     ) -> list[RawLook]:
-        """quotas가 있으면 소스별 수집량이 limit_per_source보다 우선한다."""
+        """quotas가 있으면 소스별 수집량이 limit_per_source보다 우선한다.
+
+        exclude_hashes는 재수집용이다 — 이미 가진 이미지의 내용 해시를
+        넘기면 그 사진들은 건너뛰고 목록의 뒤 카드에서 새 룩을 채운다.
+        """
         looks: list[RawLook] = []
 
         # 같은 사진이 한 목록에 두 번 실리거나 소스끼리 겹치는 일이 실제로
         # 있다. 그대로 두면 같은 룩을 두 번 분석해 비용을 버리고, 배정
         # 후보에도 중복으로 올라간다. 내용 해시로 한 번만 남긴다.
-        seen: set[str] = set()
+        seen: set[str] = set(exclude_hashes or ())
 
         # 페이지 수명을 여기서 소유한다. 호출자가 __exit__을 잊으면
         # 브라우저가 그대로 남기 때문이다.
@@ -88,10 +93,14 @@ class Collector:
             page.mouse.wheel(0, 4000)
             page.wait_for_timeout(1200)
 
-        cards = page.query_selector_all(spec.card_selector)[:limit]
+        # limit만큼 자르지 않고 전체 카드를 순회한다 — 중복·제외 해시로
+        # 건너뛴 자리를 뒤 카드가 채워야 재수집이 '새' 사진을 가져온다.
+        cards = page.query_selector_all(spec.card_selector)
         looks: list[RawLook] = []
 
         for index, card in enumerate(cards):
+            if len(looks) >= limit:
+                break
             look_id = build_look_id(spec.name, index)
             dest = self._workspace / f"{look_id}.jpg"
 

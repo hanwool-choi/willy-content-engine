@@ -27,6 +27,7 @@ from willy.config import PROJECT_ROOT, Settings
 from willy.generator.noop import NoopGenerator
 from willy.generator.preset import load_preset
 from willy.pipeline import Pipeline
+from willy.texter import TextWriter
 from willy.weather.client import WeatherClient
 from willy.weather.openmeteo import OpenMeteoClient
 from willy.web.app import create_app
@@ -66,10 +67,14 @@ def build_pipeline() -> Pipeline:
         analyzer = LookAnalyzer(settings.anthropic_api_key)
         log.warning("분석 키가 없습니다. ANTHROPIC_API_KEY 또는 GEMINI_API_KEY를 .env에 넣으세요")
 
+    # 텍스트 생성도 같은 Gemini 키를 쓴다. 키가 없으면 템플릿 폴백만 쓴다.
+    texter = TextWriter(settings.gemini_api_key) if settings.gemini_api_key else None
+
     return Pipeline(
         weather_client=weather,
         collector=Collector(settings.workspace, page_factory=page_factory),
         analyzer=analyzer,
+        texter=texter,
         generator=NoopGenerator(settings.workspace / "generated"),
         archive=Archive(settings.archive_db),
         preset=load_preset(PROJECT_ROOT / "presets" / "concept_v1.yaml"),

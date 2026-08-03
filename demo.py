@@ -135,7 +135,7 @@ class DemoCollector:
     def __init__(self, files: list[Path]):
         self._files = files
 
-    def collect(self, sources, limit_per_source: int = 20, quotas=None) -> list[RawLook]:
+    def collect(self, sources, limit_per_source: int = 20, quotas=None, exclude_hashes=None) -> list[RawLook]:
         return [
             RawLook(
                 look_id=f"look{index:02d}",

@@ -32,7 +32,7 @@ class FakeCollector:
         self.count = count
         self.last_quotas = None
 
-    def collect(self, sources, limit_per_source=20, quotas=None):
+    def collect(self, sources, limit_per_source=20, quotas=None, exclude_hashes=None):
         self.last_quotas = quotas
         looks = []
         for i in range(self.count):
@@ -153,7 +153,7 @@ class SourceCollector:
         workspace.mkdir(parents=True, exist_ok=True)
         self.last_quotas = None
 
-    def collect(self, sources, limit_per_source=20, quotas=None):
+    def collect(self, sources, limit_per_source=20, quotas=None, exclude_hashes=None):
         self.last_quotas = quotas
         looks = []
         plan = [("musinsa_snap", 4), ("wear_men", 2), ("wear_women", 2),
@@ -413,3 +413,53 @@ def test_no_top_up_when_the_pool_is_already_full(pipeline: Pipeline):
 
     codes = [w.code for w in state.warnings]
     assert WarningCode.ARCHIVE_FALLBACK not in codes
+
+
+def test_gather_passes_exclude_hashes_to_collector(tmp_path: Path):
+    class RecordingCollector(FakeCollector):
+        def collect(self, sources, limit_per_source=20, quotas=None, exclude_hashes=None):
+            self.last_exclude = exclude_hashes
+            return super().collect(sources, limit_per_source, quotas)
+
+    pipeline = make_pipeline(tmp_path, collector=RecordingCollector(tmp_path / "ws"))
+
+    pipeline.gather(base_date=date(2026, 8, 3), exclude_hashes={"h1"})
+
+    assert pipeline.collector.last_exclude == {"h1"}
+
+
+def test_write_texts_uses_weather_and_assigned_looks(tmp_path: Path):
+    class FakeTexter:
+        def __init__(self):
+            self.last_args = None
+
+        def write(self, day, looks):
+            self.last_args = (day, looks)
+            return [{"tone": "t", "text": "x"}] * 3
+
+    texter = FakeTexter()
+    pipeline = make_pipeline(tmp_path, texter=texter)
+    state = pipeline.gather(base_date=date(2026, 8, 3))
+
+    texts = pipeline.write_texts(state)
+
+    assert len(texts) == 3
+    day, looks = texter.last_args
+    assert day == state.week[0]
+    # 풀 전체가 아니라 '배정된 픽'만 넘긴다
+    assigned = {v.look_id for v in state.assignment.values() if v}
+    assert {l.look_id for l in looks} == assigned
+
+
+def test_write_texts_falls_back_to_template_when_ai_fails(tmp_path: Path):
+    class BrokenTexter:
+        def write(self, day, looks):
+            raise RuntimeError("HTTP 429")
+
+    pipeline = make_pipeline(tmp_path, texter=BrokenTexter())
+    state = pipeline.gather(base_date=date(2026, 8, 3))
+
+    texts = pipeline.write_texts(state)
+
+    assert len(texts) >= 1
+    assert "템플릿" in texts[0]["tone"]

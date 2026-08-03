@@ -1,6 +1,7 @@
 """로컬 컨펌 UI. 2단계 컨펌을 서버가 강제한다."""
 from __future__ import annotations
 
+import hashlib
 import threading
 from datetime import date
 from pathlib import Path
@@ -130,8 +131,7 @@ def create_app(pipeline_factory: Callable[[], Pipeline]) -> FastAPI:
     # 겹쳐 돌면 API 한도만 태우므로 서버에서 한 번에 하나만 허용한다.
     gather_lock = threading.Lock()
 
-    @app.post("/api/gather")
-    def gather(request: GatherRequest) -> dict:
+    def _run_gather(base_date: date, exclude_hashes: set[str] | None) -> dict:
         if not gather_lock.acquire(blocking=False):
             raise HTTPException(
                 409, "수집이 이미 진행 중입니다. 끝날 때까지 기다려 주세요."
@@ -142,11 +142,40 @@ def create_app(pipeline_factory: Callable[[], Pipeline]) -> FastAPI:
                 previous.archive.close()
 
             pipeline = pipeline_factory()
-            state = pipeline.gather(base_date=request.base_date)
-            ctx.update(pipeline=pipeline, state=state, generated=False)
+            state = pipeline.gather(
+                base_date=base_date, exclude_hashes=exclude_hashes
+            )
+            ctx.update(
+                pipeline=pipeline, state=state, generated=False,
+                base_date=base_date,
+            )
             return _serialize(state)
         finally:
             gather_lock.release()
+
+    @app.post("/api/gather")
+    def gather(request: GatherRequest) -> dict:
+        return _run_gather(request.base_date, None)
+
+    @app.post("/api/regather")
+    def regather() -> dict:
+        """같은 날짜로 다시 수집하되, 이미 가진 이미지는 건너뛴다."""
+        state = ctx["state"]
+        if state is None or ctx.get("base_date") is None:
+            raise HTTPException(409, "먼저 수집을 실행해 주세요.")
+
+        exclude = {
+            hashlib.sha256(look.image_path.read_bytes()).hexdigest()
+            for look in state.looks
+            if look.image_path and look.image_path.exists()
+        }
+        return _run_gather(ctx["base_date"], exclude)
+
+    @app.post("/api/texts")
+    def texts() -> dict:
+        if ctx["state"] is None:
+            raise HTTPException(409, "먼저 수집을 실행해 주세요.")
+        return {"texts": ctx["pipeline"].write_texts(ctx["state"])}
 
     @app.post("/api/generate")
     def generate() -> dict:

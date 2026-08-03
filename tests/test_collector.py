@@ -320,3 +320,26 @@ def test_collect_removes_the_duplicate_file_from_disk(tmp_path: Path):
     make_collector(tmp_path, page).collect([spec()], limit_per_source=10)
 
     assert len(list(tmp_path.glob("musinsa_snap-*"))) == 1
+
+
+def test_collect_skips_excluded_hashes_and_fills_from_later_cards(tmp_path: Path):
+    """재수집: 이미 가진 이미지는 건너뛰고 뒤 카드에서 새 룩을 채운다."""
+    import hashlib
+
+    page = FakePage([
+        FakeElement("https://cdn.test/a.jpg"),
+        FakeElement("https://cdn.test/b.jpg"),
+        FakeElement("https://cdn.test/c.jpg"),
+    ])
+    already_have = hashlib.sha256(b"\xff\xd8" + b"https://cdn.test/a.jpg").hexdigest()
+
+    looks = make_collector(tmp_path, page).collect(
+        [spec()], limit_per_source=2, exclude_hashes={already_have}
+    )
+
+    urls = [look.raw_meta.get("image_url") for look in looks] if looks and looks[0].raw_meta else None
+    assert len(looks) == 2, f"제외 후 뒤 카드로 채워야 한다: {len(looks)}장"
+    # a는 제외됐으므로 수집물 바이트에 a URL이 없어야 한다
+    contents = b"".join(look.image_path.read_bytes() for look in looks)
+    assert b"a.jpg" not in contents
+    assert b"b.jpg" in contents and b"c.jpg" in contents

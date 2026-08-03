@@ -63,6 +63,7 @@ class Pipeline:
         horizon_days: int = 1,
         picks_per_gender: int = 2,
         min_pool_per_gender: int = 4,
+        texter=None,
     ):
         self.weather_client = weather_client
         self.collector = collector
@@ -71,17 +72,19 @@ class Pipeline:
         self.archive = archive
         self.preset = preset
         self.output_root = output_root
+        self.texter = texter
         self.source_quotas = source_quotas or dict(SOURCE_QUOTAS)
         self.horizon_days = horizon_days
         self.picks_per_gender = picks_per_gender
         self.min_pool_per_gender = min_pool_per_gender
 
-    def gather(self, base_date: date) -> PipelineState:
+    def gather(
+        self, base_date: date, exclude_hashes: set[str] | None = None
+    ) -> PipelineState:
         """수집 -> 배치 분석 -> 배정. 1차 컨펌 대상.
 
         계획 대상은 base_date 당일이 아니라 '내일', 즉 base_date + 1일부터다.
-        분석은 전 수집분을 요청 1번에 넣는 배치라 부분 성공이 없다 —
-        실패하면 조용히 이어가지 않고 오류로 드러낸다.
+        exclude_hashes는 재수집용 — 이미 가진 이미지를 건너뛰고 새 룩을 걷는다.
         """
         plan_start = base_date + timedelta(days=1)
         week = self.weather_client.get_week_forecast(
@@ -89,7 +92,9 @@ class Pipeline:
         )
 
         raw_looks = self.collector.collect(
-            list(SOURCE_SPECS.values()), quotas=self.source_quotas
+            list(SOURCE_SPECS.values()),
+            quotas=self.source_quotas,
+            exclude_hashes=exclude_hashes,
         )
 
         try:
@@ -251,6 +256,22 @@ class Pipeline:
             )
 
         return looks, warnings
+
+    def write_texts(self, state: PipelineState) -> list[dict]:
+        """내일 날씨 + 배정된 픽으로 Threads 텍스트 3종을 쓴다.
+
+        AI가 죽으면 예시 구조 기반 템플릿 초안으로 폴백한다 — 텍스트가
+        없어서 발행을 못 하는 날은 없어야 한다.
+        """
+        from willy.texter import template_texts
+
+        picks = [look for look in state.assignment.values() if look is not None]
+        if self.texter is not None:
+            try:
+                return self.texter.write(state.week[0], picks)
+            except Exception:
+                log.exception("텍스트 생성 실패 — 템플릿 폴백으로 대체합니다")
+        return template_texts(state.week[0], picks)
 
     def generate_images(self, state: PipelineState) -> PipelineState:
         """AI 재생성. 1차 컨펌 이후에만 호출된다."""

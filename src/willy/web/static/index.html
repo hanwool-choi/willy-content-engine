@@ -189,6 +189,29 @@
     font-size: 11px; color: var(--ink-soft); letter-spacing: .18em;
   }
 
+  /* ── 텍스트 콘텐츠 ── */
+  .texts { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+  .text-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .text-card .tone {
+    font-weight: 700; font-size: 12px; letter-spacing: .08em;
+    color: var(--accent);
+  }
+  .text-card pre {
+    margin: 0; white-space: pre-wrap; word-break: break-word;
+    font-family: var(--sans); font-size: 13px; line-height: 1.6;
+    background: var(--paper); border-radius: 6px; padding: 12px;
+    flex: 1;
+  }
+  .text-card button {
+    align-self: flex-start; font: inherit; font-size: 12px; cursor: pointer;
+    background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+    padding: 6px 12px;
+  }
+  .text-card button:hover { border-color: var(--accent); }
+
   /* ── 확대 보기 ── */
   .thumb { cursor: zoom-in; }
   #lightbox {
@@ -223,8 +246,8 @@
     <input type="date" id="base" aria-label="기준 날짜" />
     <div class="steps">
       <button id="btn-gather"><span class="no">1</span>룩 수집 · 분석</button>
-      <button id="btn-generate" disabled><span class="no">2</span>컨펌하고 이미지 생성</button>
-      <button id="btn-finalize" disabled><span class="no">3</span>최종 컨펌 · 내보내기</button>
+      <button id="btn-regather" disabled>이미지 재수집 ↻</button>
+      <button id="btn-texts" disabled><span class="no">2</span>텍스트 콘텐츠 생성</button>
     </div>
     <span id="busy" hidden></span>
   </div>
@@ -246,19 +269,27 @@
   <div class="rule" id="pool-rule" hidden></div>
   <div class="pool" id="pool"></div>
 
+  <h2 id="texts-title" hidden>텍스트 콘텐츠 <span class="muted">복사해서 바로 올릴 수 있는 3가지 톤</span></h2>
+  <div class="rule" id="texts-rule" hidden></div>
+  <div class="texts" id="texts"></div>
+
   <div class="empty-note" id="empty-note">
     날짜를 고르고 <b>1 룩 수집 · 분석</b>을 누르면, 내일 서울 날씨에 맞춰
-    무신사·WEAR·유니클로에서 룩을 모아 보드를 채웁니다. 2~4분 걸립니다.
+    무신사·WEAR·유니클로에서 룩을 모아 보드를 채웁니다 (2~4분).
+    썸네일을 클릭해 이미지를 내려받거나 원본 페이지를 열 수 있고,
+    <b>2 텍스트 콘텐츠 생성</b>으로 게시용 글 3종을 받습니다.
+    이미지·영상 생성과 업로드는 별도 엔진에서 직접 진행합니다.
   </div>
 
   <pre id="result"></pre>
 
-  <footer>WILLY CONTENT ENGINE · 로컬 전용 · 최종 컨펌 전에는 아무것도 내보내지 않습니다</footer>
+  <footer>WILLY CONTENT ENGINE · 로컬 전용 · 이미지·영상 생성과 업로드는 수동 진행</footer>
 </main>
 
 <div id="lightbox" hidden>
   <img id="lb-img" alt="확대 보기" />
   <div class="lb-actions">
+    <a id="lb-download" download>이미지 다운로드 ↓</a>
     <a id="lb-link" target="_blank" rel="noopener noreferrer" hidden>원본 페이지 열기 ↗</a>
     <button id="lb-close" type="button">닫기 (Esc)</button>
   </div>
@@ -406,7 +437,7 @@
 
   // 수집·분석은 몇 분씩 걸린다. 도는 동안 버튼을 잠그지 않으면
   // 멈춘 걸로 오해해 다시 누르게 되고, 수집·분석이 중복 실행된다.
-  const BUTTONS = ["btn-gather", "btn-generate", "btn-finalize"];
+  const BUTTONS = ["btn-gather", "btn-regather", "btn-texts"];
 
   async function withBusy(message, task) {
     const previous = BUTTONS.map((id) => $(id).disabled);
@@ -430,33 +461,58 @@
     }
   }
 
+  function afterGather() {
+    $("btn-gather").disabled = false;
+    $("btn-regather").disabled = false;
+    $("btn-texts").disabled = false;
+    $("texts-title").hidden = $("texts-rule").hidden = true;
+    $("texts").innerHTML = "";
+    $("result").textContent = "";
+  }
+
   $("btn-gather").onclick = () =>
     withBusy("수집하고 분석하는 중… 2~4분 걸립니다. 창을 닫지 마세요.", async () => {
       render(await call("/api/gather", { base_date: $("base").value }));
-      $("btn-gather").disabled = false;
-      $("btn-generate").disabled = false;
-      $("btn-finalize").disabled = true;
-      $("result").textContent = "";
+      afterGather();
     });
 
-  $("btn-generate").onclick = () =>
-    withBusy("발행용 이미지를 만드는 중…", async () => {
-      render(await call("/api/generate"));
-      $("btn-gather").disabled = false;
-      $("btn-generate").disabled = false;
-      $("btn-finalize").disabled = false;
+  $("btn-regather").onclick = () =>
+    withBusy("이미 가진 이미지는 빼고 다시 수집하는 중… 2~4분 걸립니다.", async () => {
+      render(await call("/api/regather"));
+      afterGather();
     });
 
-  $("btn-finalize").onclick = () =>
-    withBusy("폴더와 문서를 만드는 중…", async () => {
-      const data = await call("/api/finalize");
-      $("result").textContent = "내보내기 완료 → " + data.output_path;
-      $("btn-gather").disabled = false;
+  function textCard(t, index) {
+    return `
+      <div class="text-card">
+        <span class="tone">${esc(t.tone)}</span>
+        <pre id="text-body-${index}">${esc(t.text)}</pre>
+        <button type="button" data-copy="${index}">복사</button>
+      </div>`;
+  }
+
+  $("btn-texts").onclick = () =>
+    withBusy("텍스트 콘텐츠를 쓰는 중…", async () => {
+      const data = await call("/api/texts");
+      $("texts").innerHTML = data.texts.map(textCard).join("");
+      $("texts-title").hidden = $("texts-rule").hidden = false;
+      BUTTONS.forEach((id) => ($(id).disabled = false));
+      $("texts-title").scrollIntoView({ behavior: "smooth" });
     });
+
+  $("texts").addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-copy]");
+    if (!button) return;
+    const body = $("text-body-" + button.dataset.copy).textContent;
+    await navigator.clipboard.writeText(body);
+    button.textContent = "복사됨 ✓";
+    setTimeout(() => (button.textContent = "복사"), 1500);
+  });
 
   // ── 확대 보기: 썸네일 클릭 → 큰 이미지 + 원본 페이지 링크 ──
   function openLightbox(src, link) {
     $("lb-img").src = src;
+    $("lb-download").href = src;
     $("lb-link").hidden = !link;
     if (link) $("lb-link").href = link;
     $("lightbox").hidden = false;
