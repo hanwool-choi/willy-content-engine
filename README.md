@@ -38,10 +38,10 @@ UI는 수집된 룩과 생성된 이미지의 썸네일을 `/api/image/{look_id}
 ```bash
 pip install -e ".[dev]"
 playwright install chromium
-cp .env.example .env
 ```
 
-`.env` 에 키를 채운다:
+`.env`는 저장소에 포함돼 있다 (비공개 저장소 + 무료 키 전제. **공개로
+전환하면 키를 재발급하고 .env를 다시 추적 제외할 것**). 키 항목:
 
 - `KMA_SERVICE_KEY` — 공공데이터포털 기상청 단기예보/중기예보 서비스 키 (선택)
 - `ANTHROPIC_API_KEY` — 룩 분석용 Claude API 키
