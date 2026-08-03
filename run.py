@@ -39,7 +39,10 @@ def build_pipeline() -> Pipeline:
 
     def page_factory():
         # browser_page는 컨텍스트매니저다. 그대로 넘기면 collect가 닫아준다.
-        return browser_page(headless=False)
+        # headless로 돌린다. 세 소스 모두 headless 수집이 검증됐고,
+        # 백그라운드로 서버를 띄우는 환경에서는 창 있는 브라우저 스폰이
+        # 막혀 있을 수 있다 (spawn UNKNOWN).
+        return browser_page(headless=True)
 
     weather = (
         WeatherClient(settings.kma_service_key)

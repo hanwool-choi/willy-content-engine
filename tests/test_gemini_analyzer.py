@@ -34,15 +34,17 @@ class FakeResponse:
 
 
 class FakeHttp:
-    def __init__(self, response: FakeResponse):
-        self._response = response
+    def __init__(self, response: FakeResponse, *more: FakeResponse):
+        self._responses = [response, *more]
+        self.calls = 0
         self.last_url = None
         self.last_kwargs = None
 
     def post(self, url, **kwargs):
+        self.calls += 1
         self.last_url = url
         self.last_kwargs = kwargs
-        return self._response
+        return self._responses[min(self.calls, len(self._responses)) - 1]
 
 
 @pytest.fixture
@@ -168,6 +170,65 @@ def test_analyze_surfaces_http_error(image: Path):
 
     with pytest.raises(RuntimeError, match="HTTP 429"):
         analyzer.analyze(raw(image))
+
+
+def rate_limited(delay: str = "3s") -> FakeResponse:
+    return FakeResponse(
+        {
+            "error": {
+                "code": 429,
+                "status": "RESOURCE_EXHAUSTED",
+                "details": [
+                    {
+                        "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                        "retryDelay": delay,
+                    }
+                ],
+            }
+        },
+        status_code=429,
+    )
+
+
+def test_analyze_retries_rate_limit_after_server_delay(image: Path):
+    """무료 티어 분당 한도에 걸리면 서버가 알려준 시간만큼 쉬고 재시도한다."""
+    http = FakeHttp(rate_limited("7s"), FakeResponse(gemini_body(VALID_ANALYSIS)))
+    naps = []
+    analyzer = GeminiAnalyzer(api_key="g", http=http, sleep=naps.append)
+
+    result = analyzer.analyze(raw(image))
+
+    assert result.gender is Gender.WOMEN
+    assert http.calls == 2
+    assert naps == [7.0]
+
+
+def test_analyze_gives_up_after_repeated_rate_limits(image: Path):
+    http = FakeHttp(rate_limited())
+    naps = []
+    analyzer = GeminiAnalyzer(api_key="g", http=http, sleep=naps.append)
+
+    with pytest.raises(RuntimeError, match="HTTP 429"):
+        analyzer.analyze(raw(image))
+
+    assert http.calls == 4  # 최초 1회 + 재시도 3회
+    assert len(naps) == 3
+
+
+def test_analyze_does_not_retry_429_without_retry_info(image: Path):
+    """크레딧 소진처럼 기다려도 소용없는 429는 재시도 없이 즉시 드러낸다."""
+    depleted = FakeResponse(
+        {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED"}}, status_code=429
+    )
+    http = FakeHttp(depleted)
+    naps = []
+    analyzer = GeminiAnalyzer(api_key="g", http=http, sleep=naps.append)
+
+    with pytest.raises(RuntimeError, match="HTTP 429"):
+        analyzer.analyze(raw(image))
+
+    assert http.calls == 1
+    assert naps == []
 
 
 def test_analyze_rejects_unknown_gender(image: Path):

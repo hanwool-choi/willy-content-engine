@@ -7,9 +7,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+# cwd 기준 탐색은 저장소 밖에서 실행하면 .env를 놓친다. 위치를 못박는다.
+load_dotenv(PROJECT_ROOT / ".env")
 
 # 서울 기상청 격자 좌표 / 예보구역 코드
 SEOUL_NX = 60

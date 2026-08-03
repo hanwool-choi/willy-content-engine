@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import time
 
 import httpx
 from anthropic import Anthropic
@@ -160,6 +161,26 @@ class LookAnalyzer:
         return build_analysis(raw_look, _extract_json(response.content[0].text))
 
 
+def _retry_delay_seconds(response) -> float | None:
+    """429 응답에서 서버가 알려준 재시도 대기 시간을 꺼낸다.
+
+    분당 한도 초과에는 RetryInfo가 실려 온다. 크레딧 소진처럼 기다려도
+    소용없는 429에는 없으므로 None을 돌려 재시도를 막는다.
+    """
+    try:
+        details = response.json()["error"]["details"]
+    except (ValueError, KeyError, TypeError):
+        return None
+    for detail in details:
+        if detail.get("@type", "").endswith("RetryInfo"):
+            raw = detail.get("retryDelay", "")
+            try:
+                return float(str(raw).rstrip("s"))
+            except ValueError:
+                return None
+    return None
+
+
 class GeminiAnalyzer:
     """Gemini API 룩 분석기. 무료 티어로도 하루치(비전 12회)는 넉넉하다.
 
@@ -167,32 +188,44 @@ class GeminiAnalyzer:
     아니라 헤더로만 보낸다.
     """
 
-    def __init__(self, api_key: str, http=None):
+    MAX_RATE_LIMIT_RETRIES = 3
+
+    def __init__(self, api_key: str, http=None, sleep=None):
         self._api_key = api_key
         self._http = http or httpx.Client(timeout=60)
+        self._sleep = sleep or time.sleep
 
     def analyze(self, raw_look: RawLook) -> LookAnalysis:
         media_type, encoded = _encode_image(raw_look)
 
-        response = self._http.post(
-            f"{GEMINI_BASE_URL}/models/{GEMINI_MODEL}:generateContent",
-            headers={"x-goog-api-key": self._api_key},
-            json={
-                "contents": [
-                    {
-                        "parts": [
-                            {
-                                "inline_data": {
-                                    "mime_type": media_type,
-                                    "data": encoded,
-                                }
-                            },
-                            {"text": ANALYSIS_PROMPT},
-                        ]
-                    }
-                ]
-            },
-        )
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "inline_data": {
+                                "mime_type": media_type,
+                                "data": encoded,
+                            }
+                        },
+                        {"text": ANALYSIS_PROMPT},
+                    ]
+                }
+            ]
+        }
+
+        for _attempt in range(self.MAX_RATE_LIMIT_RETRIES + 1):
+            response = self._http.post(
+                f"{GEMINI_BASE_URL}/models/{GEMINI_MODEL}:generateContent",
+                headers={"x-goog-api-key": self._api_key},
+                json=payload,
+            )
+            if response.status_code != 429:
+                break
+            delay = _retry_delay_seconds(response)
+            if delay is None or _attempt == self.MAX_RATE_LIMIT_RETRIES:
+                break
+            self._sleep(delay)
         response.raise_for_status()
 
         body = response.json()
