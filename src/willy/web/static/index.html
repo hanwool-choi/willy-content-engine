@@ -188,6 +188,28 @@
     margin-top: 56px; padding-top: 14px; border-top: 1px solid var(--line);
     font-size: 11px; color: var(--ink-soft); letter-spacing: .18em;
   }
+
+  /* ── 확대 보기 ── */
+  .thumb { cursor: zoom-in; }
+  #lightbox {
+    position: fixed; inset: 0; z-index: 50;
+    background: #1a1b1ecc;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 14px; padding: 24px;
+    cursor: zoom-out;
+  }
+  #lightbox img {
+    max-width: min(92vw, 640px); max-height: 78vh;
+    object-fit: contain; border-radius: 6px; background: #fff;
+  }
+  #lightbox .lb-actions { display: flex; gap: 10px; cursor: default; }
+  #lightbox a, #lightbox button {
+    font: inherit; font-size: 13px; cursor: pointer;
+    background: var(--card); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 6px;
+    padding: 8px 14px; text-decoration: none;
+  }
+  #lightbox a:hover, #lightbox button:hover { border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -226,13 +248,21 @@
 
   <div class="empty-note" id="empty-note">
     날짜를 고르고 <b>1 룩 수집 · 분석</b>을 누르면, 내일 서울 날씨에 맞춰
-    무신사 스냅과 유니클로에서 룩을 모아 보드를 채웁니다. 1~2분 걸립니다.
+    무신사·WEAR·유니클로에서 룩을 모아 보드를 채웁니다. 2~4분 걸립니다.
   </div>
 
   <pre id="result"></pre>
 
   <footer>WILLY CONTENT ENGINE · 로컬 전용 · 최종 컨펌 전에는 아무것도 내보내지 않습니다</footer>
 </main>
+
+<div id="lightbox" hidden>
+  <img id="lb-img" alt="확대 보기" />
+  <div class="lb-actions">
+    <a id="lb-link" target="_blank" rel="noopener noreferrer" hidden>원본 페이지 열기 ↗</a>
+    <button id="lb-close" type="button">닫기 (Esc)</button>
+  </div>
+</div>
 
 <script>
   const $ = (id) => document.getElementById(id);
@@ -257,13 +287,29 @@
   function renderTicket(day) {
     tintByWeather(day);
     $("t-date").textContent = `${day.date.slice(5).replace("-", ".")} (${day.weekday})`;
-    $("t-temp").innerHTML = `${esc(day.temp_max)}<small>/${esc(day.temp_min)}℃</small>`;
+    $("t-temp").innerHTML = `${esc(day.temp_max)}℃<small> / ${esc(day.temp_min)}℃</small>`;
     $("t-sky").textContent = day.sky;
     $("t-pop").textContent = `${day.precip_prob}%`;
     $("ticket").style.display = "flex";
   }
 
   const genderLabel = (g) => ({ men: "MEN", women: "WOMEN" }[g] || "성별 미상");
+
+  // 수집기가 저장하는 원본 링크는 상대경로일 수 있다. 소스 도메인을 붙여
+  // 절대 URL로 만들고, http(s)가 아니면 링크를 달지 않는다.
+  const SOURCE_ORIGIN = {
+    musinsa_snap: "https://www.musinsa.com",
+    wear_men: "https://wear.jp",
+    wear_women: "https://wear.jp",
+    uniqlo_men: "https://www.uniqlo.com",
+    uniqlo_women: "https://www.uniqlo.com",
+  };
+
+  function absolutize(source, url) {
+    if (!url) return null;
+    const full = /^https?:\/\//.test(url) ? url : (SOURCE_ORIGIN[source] || "") + url;
+    return /^https?:\/\//.test(full) ? full : null;
+  }
 
   function slotCard(s) {
     const who = genderLabel(s.gender);
@@ -272,7 +318,8 @@
     }
     const images = [`
       <figure>
-        <img class="thumb" src="${esc(s.image_url)}" alt="원본" loading="lazy" />
+        <img class="thumb" src="${esc(s.image_url)}" alt="원본"
+             data-link="${esc(absolutize(s.source, s.source_url) || "")}" loading="lazy" />
         <figcaption>참고 원본 · 발행 금지</figcaption>
       </figure>`];
     if (s.generated_url) {
@@ -300,7 +347,8 @@
     return `
       <div class="look ${p.assigned ? "is-assigned" : ""}">
         <span class="src">${esc(sourceLabel(p.source))}</span>
-        <img class="thumb" src="${esc(p.image_url)}" alt="${esc(p.look_id)}" loading="lazy" />
+        <img class="thumb" src="${esc(p.image_url)}" alt="${esc(p.look_id)}"
+             data-link="${esc(absolutize(p.source, p.source_url) || "")}" loading="lazy" />
         <div class="meta">
           <b>${genderLabel(p.gender)}</b>${p.temp_range ? ` · ${esc(p.temp_range[0])}~${esc(p.temp_range[1])}℃` : ""}
           ${p.rain_ok ? " · 우천OK" : ""}<br />
@@ -383,7 +431,7 @@
   }
 
   $("btn-gather").onclick = () =>
-    withBusy("수집하고 분석하는 중… 1~2분 걸립니다. 창을 닫지 마세요.", async () => {
+    withBusy("수집하고 분석하는 중… 2~4분 걸립니다. 창을 닫지 마세요.", async () => {
       render(await call("/api/gather", { base_date: $("base").value }));
       $("btn-gather").disabled = false;
       $("btn-generate").disabled = false;
@@ -405,6 +453,32 @@
       $("result").textContent = "내보내기 완료 → " + data.output_path;
       $("btn-gather").disabled = false;
     });
+
+  // ── 확대 보기: 썸네일 클릭 → 큰 이미지 + 원본 페이지 링크 ──
+  function openLightbox(src, link) {
+    $("lb-img").src = src;
+    $("lb-link").hidden = !link;
+    if (link) $("lb-link").href = link;
+    $("lightbox").hidden = false;
+  }
+
+  function closeLightbox() {
+    $("lightbox").hidden = true;
+    $("lb-img").removeAttribute("src");
+  }
+
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("#lightbox")) return;
+    const img = event.target.closest("img.thumb");
+    if (img) openLightbox(img.currentSrc || img.src, img.dataset.link || null);
+  });
+  $("lightbox").addEventListener("click", (event) => {
+    if (!event.target.closest(".lb-actions")) closeLightbox();
+  });
+  $("lb-close").onclick = closeLightbox;
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeLightbox();
+  });
 </script>
 </body>
 </html>

@@ -79,6 +79,7 @@ def raws(images: list[Path]) -> list[RawLook]:
             source="musinsa_snap",
             image_path=path,
             capture_method="original_url",
+            source_url=f"/snap/{i}",
             collected_at=datetime(2026, 8, 3),
         )
         for i, path in enumerate(images)
@@ -110,6 +111,8 @@ def test_batch_maps_fields(images, day):
     assert results[0].temp_range == (24, 30)
     assert results[0].season == "summer"
     assert results[0].source == "musinsa_snap"
+    # 원본 페이지 링크는 수집 시점의 것을 그대로 나른다. UI 확대 보기에서 쓴다.
+    assert results[0].source_url == "/snap/0"
 
 
 def test_batch_sends_images_as_ordered_blocks(images, day):

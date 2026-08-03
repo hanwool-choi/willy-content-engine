@@ -75,6 +75,8 @@ class LookAnalysis:
     image_path: Path | None = None
     # 무신사가 피드에 섞어 내보내는 자체 AI 코디 판정. 발행 후보에서 뺀다.
     is_ai: bool = False
+    # 수집 시점의 원본 페이지 링크. UI 확대 보기에서 출처로 이동할 때 쓴다.
+    source_url: str | None = None
 
     @property
     def temp_median(self) -> float:

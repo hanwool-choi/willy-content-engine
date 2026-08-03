@@ -125,6 +125,7 @@ def build_analysis(raw_look: RawLook, data: dict) -> LookAnalysis:
         style_tags=list(data.get("style_tags", [])),
         image_path=raw_look.image_path,
         is_ai=bool(data.get("is_ai", False)),
+        source_url=raw_look.source_url,
     )
 
 

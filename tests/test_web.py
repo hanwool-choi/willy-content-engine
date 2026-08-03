@@ -292,3 +292,11 @@ def test_gather_rejects_concurrent_run(tmp_path: Path):
     assert (
         client.post("/api/gather", json={"base_date": "2026-08-03"}).status_code == 200
     )
+
+
+def test_payload_carries_source_url_for_lightbox(client: TestClient):
+    """확대 보기에서 원본 페이지로 갈 수 있게 pool·slots 모두 source_url을 나른다."""
+    body = client.post("/api/gather", json={"base_date": "2026-08-03"}).json()
+
+    assert all("source_url" in entry for entry in body["pool"])
+    assert all("source_url" in slot for slot in body["slots"])
