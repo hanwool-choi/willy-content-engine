@@ -30,6 +30,14 @@ from willy.publisher.folders import publish
 
 log = logging.getLogger(__name__)
 
+# URL 자체가 성별을 보장하는 소스. 분석 생략 모드의 성별 폴백에 쓴다.
+GENDER_BY_SOURCE = {
+    "wear_men": Gender.MEN,
+    "wear_women": Gender.WOMEN,
+    "uniqlo_men": Gender.MEN,
+    "uniqlo_women": Gender.WOMEN,
+}
+
 
 @dataclass
 class PipelineState:
@@ -84,7 +92,13 @@ class Pipeline:
             list(SOURCE_SPECS.values()), quotas=self.source_quotas
         )
 
-        analyses = self.analyzer.analyze_batch(raw_looks, week[0])
+        try:
+            analyses = self.analyzer.analyze_batch(raw_looks, week[0])
+        except Exception:
+            # 분석이 죽어도(무료 한도 429 등) 하루 발행이 막히면 안 된다.
+            # 자동화 수준을 낮춰 사람 컨펌으로 넘기는 모드로 완주한다.
+            log.exception("배치 분석 실패 — 분석 생략 모드로 진행합니다")
+            return self._gather_without_analysis(raw_looks, week)
 
         # AI 생성 판정 이미지는 발행 후보·아카이브 모두에서 뺀다. 남의 AI
         # 이미지를 재생성 원본으로 쓰면 채널 정체성도 저작권도 애매해진다.
@@ -115,6 +129,76 @@ class Pipeline:
             looks=looks,
             assignment=assignment,
             warnings=topup_warnings + warnings,
+            caveats=caveats,
+        )
+
+    def _gather_without_analysis(
+        self, raw_looks: list, week: list[DayWeather]
+    ) -> PipelineState:
+        """분석 생략 모드. 성별은 소스 URL에서만 얻고, 날씨 적합은 판단하지
+        않은 채 전 슬롯을 '직접 확인' 조건부로 채워 사람 컨펌에 맡긴다.
+
+        메타데이터가 빈 룩은 아카이브에 저장하지 않는다 — 폴백·재등장
+        금지 조회를 오염시킨다. 무신사처럼 성별 미상인 룩은 배정하지 않고
+        풀에만 남긴다 (자체 AI 코디가 섞여 있어 자동 배정이 위험하다).
+        """
+        day = week[0]
+        season = derive_season(day.temp_repr, day.date.month)
+        looks = [
+            LookAnalysis(
+                look_id=raw.look_id,
+                source=raw.source,
+                gender=GENDER_BY_SOURCE.get(raw.source, Gender.UNKNOWN),
+                temp_range=None,
+                rain_ok=False,
+                season=season,
+                style_tags=[],
+                image_path=raw.image_path,
+            )
+            for raw in raw_looks
+        ]
+
+        assignment: Assignment = {}
+        caveats = {}
+        warnings = [
+            Warning(
+                code=WarningCode.ANALYSIS_SKIPPED,
+                slot_date=day.date,
+                gender=None,
+                message=(
+                    "비전 분석에 실패해 분석 생략 모드로 진행합니다. "
+                    "날씨 적합과 AI 생성 여부를 직접 확인해 주세요."
+                ),
+            )
+        ]
+
+        for gender in (Gender.MEN, Gender.WOMEN):
+            candidates = [look for look in looks if look.gender == gender]
+            for pick in range(self.picks_per_gender):
+                slot = (day.date, gender, pick)
+                if candidates:
+                    chosen = candidates.pop(0)
+                    assignment[slot] = chosen
+                    caveats[slot] = "분석 생략 — 날씨 적합 미확인, 직접 확인해 주세요"
+                else:
+                    assignment[slot] = None
+                    warnings.append(
+                        Warning(
+                            code=WarningCode.EMPTY_SLOT,
+                            slot_date=day.date,
+                            gender=gender,
+                            message=(
+                                f"{day.weekday_ko}요일 {gender.value} 픽{pick + 1}: "
+                                f"성별이 보장된 수집분이 없어 비워둡니다."
+                            ),
+                        )
+                    )
+
+        return PipelineState(
+            week=week,
+            looks=looks,
+            assignment=assignment,
+            warnings=warnings,
             caveats=caveats,
         )
 

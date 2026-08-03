@@ -140,17 +140,91 @@ def test_gather_passes_source_quotas_to_collector(tmp_path: Path):
     assert pipeline.collector.last_quotas == quotas
 
 
-def test_gather_fails_loudly_when_batch_analysis_fails(pipeline: Pipeline):
-    """배치 분석 실패는 부분 성공이 없다. 조용히 넘어가지 않는다."""
+class BrokenAnalyzer:
+    def analyze_batch(self, raw_looks, day):
+        raise RuntimeError("HTTP 429")
 
-    class BrokenAnalyzer:
-        def analyze_batch(self, raw_looks, day):
-            raise ValueError("분석 결과를 파싱할 수 없습니다")
 
-    pipeline.analyzer = BrokenAnalyzer()
+class SourceCollector:
+    """소스명이 실제 구성과 같은 수집기. 폴백의 소스 기반 성별 추정을 검증한다."""
 
-    with pytest.raises(ValueError, match="분석 결과를 파싱"):
-        pipeline.gather(base_date=date(2026, 8, 3))
+    def __init__(self, workspace: Path):
+        self.workspace = workspace
+        workspace.mkdir(parents=True, exist_ok=True)
+        self.last_quotas = None
+
+    def collect(self, sources, limit_per_source=20, quotas=None):
+        self.last_quotas = quotas
+        looks = []
+        plan = [("musinsa_snap", 4), ("wear_men", 2), ("wear_women", 2),
+                ("uniqlo_men", 2), ("uniqlo_women", 2)]
+        i = 0
+        for source, count in plan:
+            for _ in range(count):
+                path = self.workspace / f"raw{i}.jpg"
+                path.write_bytes(b"\xff\xd8raw")
+                looks.append(
+                    RawLook(
+                        look_id=f"{source}-{i}", source=source, image_path=path,
+                        capture_method="original_url",
+                        collected_at=datetime(2026, 8, 3),
+                    )
+                )
+                i += 1
+        return looks
+
+
+def test_analysis_failure_degrades_instead_of_dying(tmp_path: Path):
+    """분석이 죽어도 하루 발행이 막히지 않는다 — 분석 생략 모드로 완주한다.
+
+    성별이 URL로 보장되는 소스(WEAR·유니클로)에서 슬롯을 채우고, 전
+    슬롯에 '직접 확인' 사유를 달아 사람 컨펌으로 넘긴다.
+    """
+    pipeline = make_pipeline(
+        tmp_path,
+        collector=SourceCollector(tmp_path / "ws"),
+        analyzer=BrokenAnalyzer(),
+    )
+
+    state = pipeline.gather(base_date=date(2026, 8, 3))
+
+    # 4칸 모두 성별 보장 소스에서 채워진다 (남 wear2+uniqlo2, 여 동일)
+    filled = [v for v in state.assignment.values() if v is not None]
+    assert len(filled) == 4
+    assert all(v.source != "musinsa_snap" for v in filled)
+
+    # 전 슬롯 조건부 — 사람이 확인해야 한다는 사유가 붙는다
+    assert set(state.caveats) == set(state.assignment)
+    assert all("분석" in reason for reason in state.caveats.values())
+    assert WarningCode.ANALYSIS_SKIPPED in [w.code for w in state.warnings]
+
+
+def test_degraded_mode_keeps_musinsa_in_pool_as_unknown_gender(tmp_path: Path):
+    """무신사 룩은 성별 미상으로 풀에 남는다. 버리지도, 넘겨짚지도 않는다."""
+    pipeline = make_pipeline(
+        tmp_path,
+        collector=SourceCollector(tmp_path / "ws"),
+        analyzer=BrokenAnalyzer(),
+    )
+
+    state = pipeline.gather(base_date=date(2026, 8, 3))
+
+    musinsa = [look for look in state.looks if look.source == "musinsa_snap"]
+    assert musinsa, "무신사 룩이 풀에서 사라졌다"
+    assert all(look.gender is Gender.UNKNOWN for look in musinsa)
+
+
+def test_degraded_mode_does_not_pollute_archive(tmp_path: Path):
+    """분석 없는 룩은 메타데이터가 비어 있다. 아카이브에 저장하지 않는다."""
+    pipeline = make_pipeline(
+        tmp_path,
+        collector=SourceCollector(tmp_path / "ws"),
+        analyzer=BrokenAnalyzer(),
+    )
+
+    pipeline.gather(base_date=date(2026, 8, 3))
+
+    assert pipeline.archive.count() == 0
 
 
 def test_gather_excludes_ai_generated_looks(tmp_path: Path):

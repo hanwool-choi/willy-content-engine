@@ -263,8 +263,10 @@
     $("ticket").style.display = "flex";
   }
 
+  const genderLabel = (g) => ({ men: "MEN", women: "WOMEN" }[g] || "성별 미상");
+
   function slotCard(s) {
-    const who = s.gender === "men" ? "MEN" : "WOMEN";
+    const who = genderLabel(s.gender);
     if (s.empty) {
       return `<div class="slot is-empty">${who} · 픽${s.pick + 1}<br />비어 있음 — 직접 추가해 주세요</div>`;
     }
@@ -288,7 +290,7 @@
         </header>
         ${s.caveat ? `<span class="badge-conditional">조건부 추천</span>` : ""}
         <div class="pair">${images.join("")}</div>
-        <span class="range">${esc(s.temp_range?.[0])}~${esc(s.temp_range?.[1])}℃ 적합</span>
+        ${s.temp_range ? `<span class="range">${esc(s.temp_range[0])}~${esc(s.temp_range[1])}℃ 적합</span>` : ""}
         <span class="tags">${s.style_tags.map(esc).join(" · ")}</span>
         ${s.caveat ? `<span class="caveat">${esc(s.caveat)} — 쓸지 뺄지는 컨펌 전에 결정하세요</span>` : ""}
       </div>`;
@@ -300,7 +302,7 @@
         <span class="src">${esc(sourceLabel(p.source))}</span>
         <img class="thumb" src="${esc(p.image_url)}" alt="${esc(p.look_id)}" loading="lazy" />
         <div class="meta">
-          <b>${p.gender === "men" ? "MEN" : "WOMEN"}</b> · ${esc(p.temp_range[0])}~${esc(p.temp_range[1])}℃
+          <b>${genderLabel(p.gender)}</b>${p.temp_range ? ` · ${esc(p.temp_range[0])}~${esc(p.temp_range[1])}℃` : ""}
           ${p.rain_ok ? " · 우천OK" : ""}<br />
           ${p.style_tags.map(esc).join(" · ")}
         </div>

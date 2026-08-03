@@ -14,6 +14,9 @@ RAIN_THRESHOLD = 60  # 강수확률 %. 이 값 이상이면 우천으로 본다.
 class Gender(str, Enum):
     MEN = "men"
     WOMEN = "women"
+    # 분석 생략 모드에서 소스로 성별을 알 수 없는 룩(무신사 등).
+    # 배정 후보에서는 빠지고 풀에만 남는다.
+    UNKNOWN = "unknown"
 
 
 class WarningCode(str, Enum):
@@ -23,6 +26,7 @@ class WarningCode(str, Enum):
     POOL_TOO_SMALL = "POOL_TOO_SMALL"
     CONDITIONAL_PICK = "CONDITIONAL_PICK"
     AI_FILTERED = "AI_FILTERED"
+    ANALYSIS_SKIPPED = "ANALYSIS_SKIPPED"
 
 
 def temp_repr(temp_max: int, temp_min: int) -> float:
@@ -61,9 +65,10 @@ class LookAnalysis:
     최소 필드만 담는다. 착장 세부 묘사는 원본 사진이 대신한다."""
 
     look_id: str
-    source: str  # "musinsa_snap" | "uniqlo_women" | "uniqlo_men" | "manual"
+    source: str  # "musinsa_snap" | "wear_men" | "uniqlo_women" | ... | "manual"
     gender: Gender
-    temp_range: tuple[int, int]
+    # 분석 생략 모드에서는 None — 날씨 적합을 판단하지 못했다는 뜻이다.
+    temp_range: tuple[int, int] | None
     rain_ok: bool
     season: str  # "spring" | "summer" | "fall" | "winter"
     style_tags: list[str]
