@@ -173,8 +173,8 @@ def test_style_tags_are_escaped_in_the_page(client: TestClient):
 
     assert "const esc =" in page, "이스케이프 헬퍼가 없다"
     for expression in (
-        "p.style_tags.join",
-        "s.style_tags.join",
+        "p.style_tags.map",
+        "s.style_tags.map",
         "w.message",
         "sourceLabel(p.source)",
     ):
@@ -182,17 +182,19 @@ def test_style_tags_are_escaped_in_the_page(client: TestClient):
             line for line in page.splitlines() if expression in line
         ]
         assert occurrences, f"{expression} 를 찾지 못했다"
-        assert all("esc(" in line for line in occurrences), (
-            f"{expression} 가 이스케이프되지 않았다: {occurrences}"
-        )
+        assert all(
+            "esc(" in line or "map(esc)" in line for line in occurrences
+        ), f"{expression} 가 이스케이프되지 않았다: {occurrences}"
+    # 조건부 추천 사유도 모델 산출값이다.
+    assert "esc(s.caveat)" in page, "caveat이 이스케이프되지 않았다"
 
 
 def test_pool_source_badges_and_breakdown_render(client: TestClient):
     """카드 배지와 소스별 집계 요약이 실제 화면 데이터로 채워지는지 확인한다."""
     page = client.get("/").text
 
-    assert "SOURCE_LABELS" in page
-    assert "무신사" in page and "유니클로W" in page and "유니클로M" in page and "직접추가" in page
+    assert "sourceLabel" in page
+    assert "무신사" in page and "유니클로W" in page and "유니클로M" in page
     assert 'id="pool-sources"' in page
 
 

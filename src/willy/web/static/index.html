@@ -1,137 +1,337 @@
 <!doctype html>
+<html lang="ko">
+<head>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>내일 뭐입지? 콘텐츠 엔진</title>
 <style>
-  body { font-family: -apple-system, sans-serif; margin: 24px; max-width: 1100px; }
-  h1 { font-size: 20px; }
-  .week { display: flex; gap: 8px; overflow-x: auto; margin: 16px 0; }
-  .day { border: 1px solid #ddd; border-radius: 8px; padding: 10px; min-width: 110px; }
-  .day.rainy { border-color: #3b82f6; background: #eff6ff; }
-  .day.coarse { opacity: .7; }
-  .slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-  .slot { border: 1px solid #ddd; border-radius: 8px; padding: 8px; font-size: 12px; }
-  .slot.empty { border-style: dashed; color: #b91c1c; }
-
-  h2 { font-size: 15px; margin: 24px 0 8px; }
-  .muted { color: #6b7280; font-weight: normal; font-size: 13px; }
-  .pool { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
-  .card { border: 1px solid #ddd; border-radius: 8px; padding: 6px; font-size: 11px; }
-  .card.unused { opacity: .45; }
-  .card .badge { float: right; font-size: 10px; }
-  .card .source-tag {
-    display: inline-block; font-size: 9px; color: #4338ca; background: #eef2ff;
-    border-radius: 4px; padding: 1px 4px; margin-bottom: 2px;
+  /* ── 토큰: 서늘한 종이 위의 잉크. 액센트는 내일 날씨가 정한다 ── */
+  :root {
+    --paper: #f1f2ef;
+    --card: #fbfbf9;
+    --ink: #1a1b1e;
+    --ink-soft: #5c5f66;
+    --line: #d8dad3;
+    --accent: #3d5a80;          /* 날씨 확정 전 기본값 */
+    --accent-soft: #3d5a8018;
+    --amber: #9a6b15;
+    --amber-bg: #f6edd9;
+    --serif: "RIDIBatang", Batang, "Noto Serif KR", serif;
+    --sans: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
   }
-  img.thumb {
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  main { max-width: 1060px; margin: 0 auto; padding: 28px 20px 80px; }
+
+  /* ── 머리글 ── */
+  .masthead { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .masthead .lab {
+    font-size: 11px; letter-spacing: .35em; color: var(--ink-soft);
+    text-transform: uppercase;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(28px, 5vw, 40px);
+    font-weight: 600;
+    margin: 2px 0 0;
+    letter-spacing: -.01em;
+  }
+  h1 .q { color: var(--accent); }
+
+  /* ── 조작대: 날짜 + 3단계 스테퍼 ── */
+  .console {
+    display: flex; align-items: stretch; gap: 10px; flex-wrap: wrap;
+    margin: 22px 0 6px;
+  }
+  .console input[type="date"] {
+    font: inherit; color: inherit;
+    border: 1px solid var(--line); border-radius: 6px;
+    background: var(--card); padding: 9px 12px;
+  }
+  .steps { display: flex; gap: 10px; flex-wrap: wrap; }
+  .steps button {
+    font: inherit; cursor: pointer;
+    display: flex; align-items: center; gap: 9px;
+    border: 1px solid var(--line); border-radius: 6px;
+    background: var(--card); color: var(--ink);
+    padding: 9px 14px;
+    transition: border-color .15s, background .15s;
+  }
+  .steps button:hover:not(:disabled) { border-color: var(--accent); }
+  .steps button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .steps button:disabled { opacity: .4; cursor: not-allowed; }
+  .steps .no {
+    font-family: var(--serif); font-size: 15px; color: var(--accent);
+    border-right: 1px solid var(--line); padding-right: 9px;
+  }
+  #busy {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--accent); font-weight: 600;
+  }
+  #busy::before {
+    content: ""; width: 9px; height: 9px; border-radius: 50%;
+    background: var(--accent); animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse { 50% { opacity: .25; } }
+  @media (prefers-reduced-motion: reduce) { #busy::before { animation: none; } }
+
+  /* ── 날씨 티켓 ── */
+  .ticket {
+    display: none; align-items: center; gap: 22px; flex-wrap: wrap;
+    margin: 18px 0 0; padding: 16px 22px;
+    background: var(--card);
+    border: 1px solid var(--line); border-left: 6px solid var(--accent);
+    border-radius: 8px;
+  }
+  .ticket .date { font-family: var(--serif); font-size: 22px; }
+  .ticket .temp { font-family: var(--serif); font-size: 30px; letter-spacing: .02em; }
+  .ticket .temp small { font-size: 15px; color: var(--ink-soft); }
+  .ticket .cell { display: flex; flex-direction: column; }
+  .ticket .cell b { font-weight: 600; }
+  .ticket .label {
+    font-size: 10px; letter-spacing: .22em; color: var(--ink-soft);
+  }
+
+  /* ── 경고 노트 ── */
+  #warnings:not(:empty) { margin-top: 14px; }
+  .warn {
+    background: var(--amber-bg); color: var(--amber);
+    border-radius: 8px; padding: 10px 14px; margin-bottom: 6px;
+    font-size: 13px;
+  }
+
+  /* ── 섹션 제목 ── */
+  h2 {
+    font-family: var(--serif); font-weight: 600; font-size: 19px;
+    margin: 34px 0 4px;
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  h2 .muted { font-family: var(--sans); font-size: 12px; color: var(--ink-soft); }
+  .rule { height: 1px; background: var(--line); margin-bottom: 14px; }
+
+  /* ── 내일의 보드 (배정 슬롯) ── */
+  .slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+  .slot {
+    background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px; display: flex; flex-direction: column; gap: 9px;
+  }
+  .slot.is-conditional { border-color: var(--amber); }
+  .slot header { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
+  .slot header .who { font-weight: 700; letter-spacing: .06em; }
+  .slot header .pickno { color: var(--ink-soft); }
+  .slot .tags { color: var(--ink-soft); font-size: 12px; }
+  .slot .range { color: var(--accent); font-weight: 600; font-size: 12px; }
+  .slot .pair { display: flex; gap: 8px; }
+  .slot figure { flex: 1; margin: 0; }
+  .slot figcaption {
+    font-size: 10px; letter-spacing: .14em; color: var(--ink-soft);
+    text-align: center; margin-top: 4px;
+  }
+  .thumb {
     width: 100%; aspect-ratio: 3 / 4; object-fit: cover;
-    border-radius: 6px; background: #f3f4f6; display: block; margin-bottom: 4px;
+    border-radius: 4px; background: var(--paper); display: block;
   }
-  .pair { display: flex; gap: 4px; }
-  .pair figure { flex: 1; margin: 0; }
-  .pair figcaption { font-size: 10px; color: #6b7280; text-align: center; }
-  .warn { background: #fef3c7; border-radius: 8px; padding: 10px; margin: 12px 0; }
-  button { padding: 10px 16px; margin-right: 8px; border-radius: 8px; cursor: pointer; }
-  button:disabled { opacity: .45; cursor: not-allowed; }
+  .badge-conditional {
+    align-self: flex-start;
+    font-size: 11px; font-weight: 700;
+    color: var(--amber); background: var(--amber-bg);
+    padding: 3px 8px; border-radius: 4px;
+  }
+  .slot .caveat { font-size: 12px; color: var(--amber); }
+  .slot.is-empty {
+    justify-content: center; align-items: center; min-height: 150px;
+    border-style: dashed; color: var(--ink-soft); background: transparent;
+  }
+
+  /* ── 수집된 룩 (컨택트 시트) ── */
+  .pool { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; }
+  .look {
+    background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    padding: 7px; font-size: 11px; position: relative;
+  }
+  .look .meta { margin-top: 5px; color: var(--ink-soft); }
+  .look .meta b { color: var(--ink); font-weight: 600; }
+  .look .src {
+    position: absolute; top: 11px; left: 11px;
+    font-size: 10px; background: #ffffffd9; color: var(--ink);
+    padding: 2px 6px; border-radius: 3px;
+  }
+  .look.is-assigned { border-color: var(--accent); }
+  .look.is-assigned::after {
+    content: "배정"; position: absolute; top: 11px; right: 11px;
+    font-size: 10px; font-weight: 700; color: #fff;
+    background: var(--accent); padding: 2px 6px; border-radius: 3px;
+  }
+
+  /* ── 빈 상태 ── */
+  .empty-note { color: var(--ink-soft); padding: 26px 0 8px; }
+  .empty-note b { color: var(--ink); }
+
+  #result { margin-top: 20px; font-family: var(--sans); }
+  #result:not(:empty) {
+    background: var(--accent-soft); color: var(--ink);
+    border-left: 4px solid var(--accent);
+    padding: 12px 16px; border-radius: 6px;
+  }
+
+  footer {
+    margin-top: 56px; padding-top: 14px; border-top: 1px solid var(--line);
+    font-size: 11px; color: var(--ink-soft); letter-spacing: .18em;
+  }
 </style>
+</head>
+<body>
+<main>
+  <div class="masthead">
+    <span class="lab">CHOI WILLY LAB · 옷장연구소</span>
+  </div>
+  <h1>내일 뭐입지<span class="q">?</span></h1>
 
-<h1>내일 뭐입지? 콘텐츠 엔진</h1>
+  <div class="console">
+    <input type="date" id="base" aria-label="기준 날짜" />
+    <div class="steps">
+      <button id="btn-gather"><span class="no">1</span>룩 수집 · 분석</button>
+      <button id="btn-generate" disabled><span class="no">2</span>컨펌하고 이미지 생성</button>
+      <button id="btn-finalize" disabled><span class="no">3</span>최종 컨펌 · 내보내기</button>
+    </div>
+    <span id="busy" hidden></span>
+  </div>
 
-<p>
-  <input type="date" id="base" />
-  <button id="btn-gather">수집</button>
-  <button id="btn-generate" disabled>1차 컨펌 · AI 생성</button>
-  <button id="btn-finalize" disabled>최종 컨펌 · 폴더 생성</button>
-  <span id="busy" class="muted" hidden></span>
-</p>
+  <section class="ticket" id="ticket" aria-label="내일 날씨">
+    <span class="date" id="t-date"></span>
+    <span class="temp" id="t-temp"></span>
+    <span class="cell"><span class="label">하늘</span><b id="t-sky"></b></span>
+    <span class="cell"><span class="label">강수확률</span><b id="t-pop"></b></span>
+  </section>
 
-<div id="warnings"></div>
-<div class="week" id="week"></div>
+  <div id="warnings"></div>
 
-<h2 id="pool-title" hidden>수집된 룩 <span class="muted" id="pool-count"></span> <span class="muted" id="pool-sources"></span></h2>
-<div class="pool" id="pool"></div>
+  <h2 id="board-title" hidden>내일의 보드</h2>
+  <div class="rule" id="board-rule" hidden></div>
+  <div class="slots" id="slots"></div>
 
-<h2 id="board-title" hidden>요일별 배정</h2>
-<div class="slots" id="slots"></div>
-<pre id="result"></pre>
+  <h2 id="pool-title" hidden>수집된 룩 <span class="muted" id="pool-count"></span> <span class="muted" id="pool-sources"></span></h2>
+  <div class="rule" id="pool-rule" hidden></div>
+  <div class="pool" id="pool"></div>
+
+  <div class="empty-note" id="empty-note">
+    날짜를 고르고 <b>1 룩 수집 · 분석</b>을 누르면, 내일 서울 날씨에 맞춰
+    무신사 스냅과 유니클로에서 룩을 모아 보드를 채웁니다. 1~2분 걸립니다.
+  </div>
+
+  <pre id="result"></pre>
+
+  <footer>WILLY CONTENT ENGINE · 로컬 전용 · 최종 컨펌 전에는 아무것도 내보내지 않습니다</footer>
+</main>
 
 <script>
   const $ = (id) => document.getElementById(id);
   $("base").valueAsDate = new Date();
 
-  // 비전 모델과 외부 API에서 온 값은 그대로 innerHTML에 넣지 않는다.
-  // 수집 대상이 제3자 사이트 이미지라, 그 안에 심긴 텍스트가 모델을 거쳐
-  // 여기까지 흘러들어올 수 있다.
   const esc = (value) =>
-    String(value ?? "").replace(/[&<>"']/g, (c) => ({
-      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-    })[c]);
+    String(value ?? "").replace(/[&<>"']/g, (ch) => (
+      { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]
+    ));
 
-  const SOURCE_LABELS = {
-    musinsa_snap: "무신사",
-    uniqlo_women: "유니클로W",
-    uniqlo_men: "유니클로M",
-    manual: "직접추가",
-  };
-  const sourceLabel = (source) => SOURCE_LABELS[source] ?? source;
+  // ── 시그니처: 내일 날씨가 페이지의 액센트를 정한다 ──
+  function tintByWeather(day) {
+    let accent = "#3d5a80";                    // 온화한 날: 청회색
+    if (day.is_rainy) accent = "#2b4a8b";      // 비: 짙은 우중청
+    else if (day.temp_repr >= 30) accent = "#b0491f"; // 폭염: 감색(柿)
+    else if (day.temp_repr <= 8) accent = "#4a5568";  // 한파: 강철회색
+    else if (day.temp_repr >= 17) accent = "#4f6d48"; // 산뜻한 날: 이끼색
+    document.documentElement.style.setProperty("--accent", accent);
+    document.documentElement.style.setProperty("--accent-soft", accent + "18");
+  }
+
+  function renderTicket(day) {
+    tintByWeather(day);
+    $("t-date").textContent = `${day.date.slice(5).replace("-", ".")} (${day.weekday})`;
+    $("t-temp").innerHTML = `${esc(day.temp_max)}<small>/${esc(day.temp_min)}℃</small>`;
+    $("t-sky").textContent = day.sky;
+    $("t-pop").textContent = `${day.precip_prob}%`;
+    $("ticket").style.display = "flex";
+  }
+
+  function slotCard(s) {
+    const who = s.gender === "men" ? "MEN" : "WOMEN";
+    if (s.empty) {
+      return `<div class="slot is-empty">${who} · 픽${s.pick + 1}<br />비어 있음 — 직접 추가해 주세요</div>`;
+    }
+    const images = [`
+      <figure>
+        <img class="thumb" src="${esc(s.image_url)}" alt="원본" loading="lazy" />
+        <figcaption>참고 원본 · 발행 금지</figcaption>
+      </figure>`];
+    if (s.generated_url) {
+      images.push(`
+      <figure>
+        <img class="thumb" src="${esc(s.generated_url)}" alt="발행용" loading="lazy" />
+        <figcaption>발행용</figcaption>
+      </figure>`);
+    }
+    return `
+      <div class="slot ${s.caveat ? "is-conditional" : ""}">
+        <header>
+          <span class="who">${who}</span>
+          <span class="pickno">픽${s.pick + 1} · ${esc(s.look_id)}</span>
+        </header>
+        ${s.caveat ? `<span class="badge-conditional">조건부 추천</span>` : ""}
+        <div class="pair">${images.join("")}</div>
+        <span class="range">${esc(s.temp_range?.[0])}~${esc(s.temp_range?.[1])}℃ 적합</span>
+        <span class="tags">${s.style_tags.map(esc).join(" · ")}</span>
+        ${s.caveat ? `<span class="caveat">${esc(s.caveat)} — 쓸지 뺄지는 컨펌 전에 결정하세요</span>` : ""}
+      </div>`;
+  }
+
+  function lookCard(p) {
+    return `
+      <div class="look ${p.assigned ? "is-assigned" : ""}">
+        <span class="src">${esc(sourceLabel(p.source))}</span>
+        <img class="thumb" src="${esc(p.image_url)}" alt="${esc(p.look_id)}" loading="lazy" />
+        <div class="meta">
+          <b>${p.gender === "men" ? "MEN" : "WOMEN"}</b> · ${esc(p.temp_range[0])}~${esc(p.temp_range[1])}℃
+          ${p.rain_ok ? " · 우천OK" : ""}<br />
+          ${p.style_tags.map(esc).join(" · ")}
+        </div>
+      </div>`;
+  }
+
+  function sourceLabel(source) {
+    return { musinsa_snap: "무신사", uniqlo_men: "유니클로M", uniqlo_women: "유니클로W", manual: "직접" }[source] || source;
+  }
 
   function render(data) {
-    $("week").innerHTML = data.week.map((d) => `
-      <div class="day ${d.is_rainy ? "rainy" : ""} ${d.resolution === "coarse" ? "coarse" : ""}">
-        <b>${esc(d.weekday)}</b><br />${esc(d.date.slice(5))}<br />
-        ${esc(d.sky)}<br />${esc(d.temp_max)}/${esc(d.temp_min)}℃<br />
-        강수 ${esc(d.precip_prob)}%
-      </div>`).join("");
+    $("empty-note").hidden = true;
 
-    const pool = data.pool || [];
-    $("pool-title").hidden = pool.length === 0;
-    $("pool-count").textContent = pool.length
-      ? `${pool.length}장 중 ${pool.filter((p) => p.assigned).length}장 배정됨`
+    if (data.week.length) renderTicket(data.week[0]);
+
+    // 조건부 추천은 해당 슬롯에 배지·사유로 이미 보이므로 상단에서 뺀다.
+    const notes = data.warnings.filter((w) => w.code !== "CONDITIONAL_PICK");
+    $("warnings").innerHTML = notes.length
+      ? `<div class="warn">${notes.map((w) => esc(w.message)).join("<br />")}</div>`
       : "";
-    if (pool.length) {
-      const bySource = {};
-      for (const p of pool) {
-        bySource[p.source] = (bySource[p.source] || 0) + 1;
-      }
-      $("pool-sources").innerHTML = Object.entries(bySource)
-        .map(([source, n]) => `${esc(sourceLabel(source))} ${esc(n)}`)
-        .join(" · ");
-    } else {
-      $("pool-sources").innerHTML = "";
-    }
-    $("pool").innerHTML = pool.map((p) => `
-      <div class="card ${p.assigned ? "" : "unused"}">
-        <img class="thumb" src="${esc(p.image_url)}" alt="${esc(p.look_id)}" loading="lazy" />
-        <span class="badge">${p.rain_ok ? "☔" : ""}</span>
-        <span class="source-tag">${esc(sourceLabel(p.source))}</span><br />
-        <b>${esc(p.look_id)}</b> · ${esc(p.gender)}<br />
-        ${esc(p.temp_range.join("~"))}℃<br />
-        ${esc(p.style_tags.join(", "))}
-      </div>`).join("");
 
-    $("board-title").hidden = data.slots.length === 0;
-    $("slots").innerHTML = data.slots.map((s) => `
-      <div class="slot ${s.empty ? "empty" : ""}">
-        ${s.empty ? "" : `
-          <div class="pair">
-            <figure>
-              <img class="thumb" src="${esc(s.image_url)}" alt="원본" loading="lazy" />
-              <figcaption>참고 원본</figcaption>
-            </figure>
-            ${s.generated_url ? `
-            <figure>
-              <img class="thumb" src="${esc(s.generated_url)}" alt="발행용" loading="lazy" />
-              <figcaption>발행용</figcaption>
-            </figure>` : ""}
-          </div>`}
-        ${esc(s.date.slice(5))} · ${esc(s.gender)} · ${esc(s.pick + 1)}<br />
-        ${s.empty ? "비어 있음" : esc(s.look_id)}<br />
-        ${s.temp_range ? esc(s.temp_range.join("~")) + "℃" : ""}<br />
-        ${esc(s.style_tags.join(", "))}
-      </div>`).join("");
+    $("board-title").hidden = $("board-rule").hidden = !data.slots.length;
+    $("slots").innerHTML = data.slots.map(slotCard).join("");
 
-    $("warnings").innerHTML = data.warnings.length
-      ? `<div class="warn">${data.warnings.map((w) => `[${esc(w.code)}] ${esc(w.message)}`).join("<br />")}</div>`
-      : "";
+    $("pool-title").hidden = $("pool-rule").hidden = !data.pool.length;
+    $("pool-count").textContent = `${data.pool.length}장 중 ${data.pool.filter((p) => p.assigned).length}장 배정`;
+    const counts = {};
+    for (const p of data.pool) counts[p.source] = (counts[p.source] || 0) + 1;
+    $("pool-sources").textContent = Object.entries(counts)
+      .map(([source, n]) => `${sourceLabel(source)} ${n}`).join(" · ");
+    $("pool").innerHTML = data.pool.map(lookCard).join("");
   }
 
   async function call(url, body) {
@@ -174,15 +374,16 @@
   }
 
   $("btn-gather").onclick = () =>
-    withBusy("수집·분석 중… 5~10분 걸립니다. 창을 닫지 마세요.", async () => {
+    withBusy("수집하고 분석하는 중… 1~2분 걸립니다. 창을 닫지 마세요.", async () => {
       render(await call("/api/gather", { base_date: $("base").value }));
       $("btn-gather").disabled = false;
       $("btn-generate").disabled = false;
       $("btn-finalize").disabled = true;
+      $("result").textContent = "";
     });
 
   $("btn-generate").onclick = () =>
-    withBusy("이미지 생성 중…", async () => {
+    withBusy("발행용 이미지를 만드는 중…", async () => {
       render(await call("/api/generate"));
       $("btn-gather").disabled = false;
       $("btn-generate").disabled = false;
@@ -190,9 +391,11 @@
     });
 
   $("btn-finalize").onclick = () =>
-    withBusy("폴더·문서 생성 중…", async () => {
+    withBusy("폴더와 문서를 만드는 중…", async () => {
       const data = await call("/api/finalize");
-      $("result").textContent = "생성 완료: " + data.output_path;
+      $("result").textContent = "내보내기 완료 → " + data.output_path;
       $("btn-gather").disabled = false;
     });
 </script>
+</body>
+</html>
