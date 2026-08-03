@@ -44,7 +44,10 @@ class FakeHttp:
         self.calls += 1
         self.last_url = url
         self.last_kwargs = kwargs
-        return self._responses[min(self.calls, len(self._responses)) - 1]
+        result = self._responses[min(self.calls, len(self._responses)) - 1]
+        if isinstance(result, Exception):
+            raise result
+        return result
 
 
 @pytest.fixture
@@ -213,6 +216,65 @@ def test_analyze_gives_up_after_repeated_rate_limits(image: Path):
 
     assert http.calls == 4  # 최초 1회 + 재시도 3회
     assert len(naps) == 3
+
+
+def test_analyze_retries_server_error(image: Path):
+    """503 같은 5xx는 일시적 과부하다. 짧게 쉬고 재시도한다."""
+    http = FakeHttp(
+        FakeResponse({}, status_code=503),
+        FakeResponse(gemini_body(VALID_ANALYSIS)),
+    )
+    naps = []
+    analyzer = GeminiAnalyzer(api_key="g", http=http, sleep=naps.append)
+
+    result = analyzer.analyze(raw(image))
+
+    assert result.gender is Gender.WOMEN
+    assert http.calls == 2
+    assert len(naps) == 1
+
+
+def test_analyze_retries_read_timeout(image: Path):
+    import httpx
+
+    http = FakeHttp(
+        httpx.ReadTimeout("timed out"),
+        FakeResponse(gemini_body(VALID_ANALYSIS)),
+    )
+    naps = []
+    analyzer = GeminiAnalyzer(api_key="g", http=http, sleep=naps.append)
+
+    result = analyzer.analyze(raw(image))
+
+    assert result.gender is Gender.WOMEN
+    assert http.calls == 2
+    assert len(naps) == 1
+
+
+def test_analyze_gives_up_after_repeated_timeouts(image: Path):
+    import httpx
+
+    http = FakeHttp(httpx.ReadTimeout("timed out"))
+    naps = []
+    analyzer = GeminiAnalyzer(api_key="g", http=http, sleep=naps.append)
+
+    with pytest.raises(httpx.ReadTimeout):
+        analyzer.analyze(raw(image))
+
+    assert http.calls == 4  # 최초 1회 + 재시도 3회
+
+
+def test_analyze_does_not_retry_4xx_other_than_429(image: Path):
+    """400·404 같은 명백한 요청 오류는 재시도해도 결과가 같다."""
+    http = FakeHttp(FakeResponse({}, status_code=404))
+    naps = []
+    analyzer = GeminiAnalyzer(api_key="g", http=http, sleep=naps.append)
+
+    with pytest.raises(RuntimeError, match="HTTP 404"):
+        analyzer.analyze(raw(image))
+
+    assert http.calls == 1
+    assert naps == []
 
 
 def test_analyze_does_not_retry_429_without_retry_info(image: Path):

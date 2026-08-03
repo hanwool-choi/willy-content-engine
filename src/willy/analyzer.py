@@ -13,7 +13,9 @@ from willy.images import sniff
 from willy.models import Gender, LookAnalysis, RawLook
 
 MODEL = "claude-sonnet-5"
-GEMINI_MODEL = "gemini-2.5-flash"
+# 고정 버전은 신규 사용자에게 제공 종료될 수 있다 (2.5-flash가 실제로 그랬다).
+# 별칭은 항상 최신 Flash를 가리키므로 그 반복을 피한다.
+GEMINI_MODEL = "gemini-flash-latest"
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
 REQUIRED_KEYS = (
@@ -189,6 +191,7 @@ class GeminiAnalyzer:
     """
 
     MAX_RATE_LIMIT_RETRIES = 3
+    TRANSIENT_RETRY_SECONDS = 5.0
 
     def __init__(self, api_key: str, http=None, sleep=None):
         self._api_key = api_key
@@ -215,17 +218,32 @@ class GeminiAnalyzer:
         }
 
         for _attempt in range(self.MAX_RATE_LIMIT_RETRIES + 1):
-            response = self._http.post(
-                f"{GEMINI_BASE_URL}/models/{GEMINI_MODEL}:generateContent",
-                headers={"x-goog-api-key": self._api_key},
-                json=payload,
-            )
-            if response.status_code != 429:
+            last_try = _attempt == self.MAX_RATE_LIMIT_RETRIES
+            try:
+                response = self._http.post(
+                    f"{GEMINI_BASE_URL}/models/{GEMINI_MODEL}:generateContent",
+                    headers={"x-goog-api-key": self._api_key},
+                    json=payload,
+                )
+            except httpx.TimeoutException:
+                if last_try:
+                    raise
+                self._sleep(self.TRANSIENT_RETRY_SECONDS)
+                continue
+
+            if response.status_code == 429:
+                # 분당 한도에는 RetryInfo가 실려 온다. 크레딧 소진처럼
+                # 기다려도 소용없는 429에는 없으므로 재시도하지 않는다.
+                delay = _retry_delay_seconds(response)
+                if delay is None or last_try:
+                    break
+                self._sleep(delay)
+            elif response.status_code >= 500:
+                if last_try:
+                    break
+                self._sleep(self.TRANSIENT_RETRY_SECONDS)
+            else:
                 break
-            delay = _retry_delay_seconds(response)
-            if delay is None or _attempt == self.MAX_RATE_LIMIT_RETRIES:
-                break
-            self._sleep(delay)
         response.raise_for_status()
 
         body = response.json()
