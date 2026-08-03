@@ -3,8 +3,28 @@ import pytest
 from willy.collector.sources import SOURCE_SPECS, build_look_id
 
 
-def test_all_three_fixed_sources_are_registered():
-    assert set(SOURCE_SPECS) == {"musinsa_snap", "uniqlo_women", "uniqlo_men"}
+def test_all_fixed_sources_are_registered():
+    assert set(SOURCE_SPECS) == {
+        "musinsa_snap",
+        "uniqlo_women",
+        "uniqlo_men",
+        "wear_men",
+        "wear_women",
+    }
+
+
+def test_wear_sources_are_gender_split_and_wearista_only():
+    """WEAR는 성별 분리 URL이고, 사용자 유형은 WEARISTA(user_type=2)만 걷는다."""
+    men = SOURCE_SPECS["wear_men"]
+    women = SOURCE_SPECS["wear_women"]
+
+    assert "men-coordinate" in men.url
+    assert "women-coordinate" in women.url
+    for spec in (men, women):
+        assert "user_type=2" in spec.url
+        # 코디 사진만 집어야 한다. 카드 안의 상품 썸네일(c.imgz.jp)이
+        # 섞이면 옷 더미 사진이 룩으로 배정된다.
+        assert "coordinate" in spec.image_selector
 
 
 def test_blocked_platforms_are_absent():

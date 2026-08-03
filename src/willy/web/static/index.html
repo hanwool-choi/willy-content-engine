@@ -308,7 +308,14 @@
   }
 
   function sourceLabel(source) {
-    return { musinsa_snap: "무신사", uniqlo_men: "유니클로M", uniqlo_women: "유니클로W", manual: "직접" }[source] || source;
+    return {
+      musinsa_snap: "무신사",
+      wear_men: "WEAR M",
+      wear_women: "WEAR W",
+      uniqlo_men: "유니클로M",
+      uniqlo_women: "유니클로W",
+      manual: "직접",
+    }[source] || source;
   }
 
   function render(data) {

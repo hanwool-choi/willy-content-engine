@@ -25,7 +25,8 @@ UI는 수집된 룩과 생성된 이미지의 썸네일을 `/api/image/{look_id}
 
 ## 수집 대상
 
-- 무신사 스냅 오늘
+- 무신사 스냅 (스냅 탭 — 자체 AI 코디는 분석 단계에서 걸러냄)
+- WEAR.jp WEARISTA 코디 men / women
 - 유니클로 스타일링북 women / men
 - 사용자 직접 투입 (URL 또는 파일)
 

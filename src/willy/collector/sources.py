@@ -52,6 +52,23 @@ SOURCE_SPECS: dict[str, SourceSpec] = {
         image_selector="img.fr-ec-image__img, img",
         link_selector=None,
     ),
+    # WEAR 코디 카드는 <a class="relative block">가 코디 이미지를 감싼다.
+    # 카드 안에 착용 상품 썸네일(c.imgz.jp)이 함께 있어서, 이미지 셀렉터를
+    # /coordinate/ 경로로 못박아 옷 더미 사진이 룩으로 섞이는 걸 막는다.
+    "wear_men": SourceSpec(
+        name="wear_men",
+        url=SOURCE_URLS["wear_men"],
+        card_selector="a:has(img[src*='/coordinate/'])",
+        image_selector="img[src*='/coordinate/']",
+        link_selector=None,
+    ),
+    "wear_women": SourceSpec(
+        name="wear_women",
+        url=SOURCE_URLS["wear_women"],
+        card_selector="a:has(img[src*='/coordinate/'])",
+        image_selector="img[src*='/coordinate/']",
+        link_selector=None,
+    ),
 }
 
 

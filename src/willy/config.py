@@ -22,12 +22,14 @@ SEOUL_MID_TA_REG = "11B10101"
 SEOUL_LAT = 37.5665
 SEOUL_LON = 126.978
 
-# 소스별 수집량. 무신사가 주력이고(스트릿 톤 다양성), 유니클로 M/W는
-# 무신사가 한쪽 성별로 쏠렸을 때를 위한 성별 안전핀이다.
+# 소스별 수집량. 무신사가 주력이고(스트릿 톤 다양성), WEAR·유니클로는
+# 성별이 URL로 보장되는 안전핀이다.
 # 무신사 스냅 피드에는 자체 AI 코디가 섞여 있어(분석에서 걸러냄),
 # 걸러진 뒤에도 6장쯤 남도록 여유를 두고 8장을 걷는다.
 SOURCE_QUOTAS = {
     "musinsa_snap": 8,
+    "wear_men": 2,
+    "wear_women": 2,
     "uniqlo_men": 2,
     "uniqlo_women": 2,
 }
@@ -62,4 +64,8 @@ SOURCE_URLS = {
     "musinsa_snap": "https://www.musinsa.com/snap/main/snap",
     "uniqlo_women": "https://www.uniqlo.com/kr/ko/stylingbook/stylehint/women",
     "uniqlo_men": "https://www.uniqlo.com/kr/ko/stylingbook/stylehint/men",
+    # WEARISTA(user_type=2)의 인기 코디만 걷는다. robots.txt가 코디
+    # 목록을 허용하고, 성별이 URL로 갈린다.
+    "wear_men": "https://wear.jp/men-coordinate/?type_id=2&user_type=2",
+    "wear_women": "https://wear.jp/women-coordinate/?type_id=2&user_type=2",
 }
