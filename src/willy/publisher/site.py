@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from html import escape
 
+from willy.config import SOURCE_ORIGINS
 from willy.models import DayWeather, Gender, LookAnalysis
 from willy.pipeline import PipelineState
 
@@ -42,20 +43,44 @@ def _source_label(source: str) -> str:
 
 
 def _photo(look: LookAnalysis, alt: str) -> str:
-    """CDN 원본을 그대로 띄운다. 주소가 없으면 자리표시자를 둔다."""
+    """CDN 원본을 그대로 띄운다. 주소가 없으면 자리표시자를 둔다.
+
+    data-full/data-link는 확대 보기가 읽는다.
+    """
     if not look.image_url:
         return '<div class="noimg">이미지 없음<br /><small>출처 링크로 확인</small></div>'
+    link = absolute_source_url(look) or ""
     return (
-        f'<img src="{escape(look.image_url)}" alt="{escape(alt)}" '
+        f'<img class="thumb" src="{escape(look.image_url)}" alt="{escape(alt)}" '
+        f'data-full="{escape(look.image_url)}" data-link="{escape(link)}" '
+        f'data-name="{escape(look.look_id)}" '
         f'loading="lazy" referrerpolicy="no-referrer" />'
     )
 
 
+def absolute_source_url(look: LookAnalysis) -> str | None:
+    """수집한 링크를 절대 URL로 되돌린다.
+
+    유니클로·WEAR는 상대경로 href를 준다. 그대로 게시하면 페이지 도메인
+    (github.io)에 붙어 깨진다. http(s)가 아닌 스킴은 링크하지 않는다.
+    """
+    url = (look.source_url or "").strip()
+    if not url:
+        return None
+    if not url.startswith(("http://", "https://")):
+        origin = SOURCE_ORIGINS.get(look.source)
+        if not origin or not url.startswith("/"):
+            return None
+        url = origin + url
+    return url if url.startswith(("http://", "https://")) else None
+
+
 def _source_link(look: LookAnalysis) -> str:
-    if not look.source_url:
+    url = absolute_source_url(look)
+    if not url:
         return ""
     return (
-        f'<a class="src-link" href="{escape(look.source_url)}" '
+        f'<a class="src-link" href="{escape(url)}" '
         f'target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>'
     )
 
@@ -210,6 +235,20 @@ def render_site(
   .empty {{ color:var(--ink-soft); padding:20px 0; }}
   .notice {{ margin-top:14px; padding:10px 14px; border-radius:8px; font-size:13px;
     background:#f6edd9; color:#9a6b15; }}
+  img.thumb {{ cursor:zoom-in; }}
+  #lightbox {{ position:fixed; inset:0; z-index:50; background:#1a1b1ecc;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; padding:24px; cursor:zoom-out; }}
+  #lightbox[hidden] {{ display:none; }}
+  #lightbox img {{ max-width:min(92vw,640px); max-height:78vh; width:auto;
+    aspect-ratio:auto; object-fit:contain; border-radius:6px; background:#fff; }}
+  #lightbox .lb-actions {{ display:flex; gap:10px; cursor:default; flex-wrap:wrap;
+    justify-content:center; }}
+  #lightbox a, #lightbox button {{ font:inherit; font-size:13px; cursor:pointer;
+    background:var(--card); color:var(--ink); border:1px solid var(--line);
+    border-radius:6px; padding:8px 14px; text-decoration:none; }}
+  #lightbox a:hover, #lightbox button:hover {{ border-color:var(--accent); }}
+  #lightbox .hint {{ color:#fff; font-size:11px; opacity:.8; }}
   footer {{ margin-top:56px; padding-top:14px; border-top:1px solid var(--line);
     font-size:11px; color:var(--ink-soft); line-height:1.8; }}
 </style>
@@ -246,16 +285,80 @@ def render_site(
     출처 링크에서 직접 확인하세요. 이미지·영상 생성과 업로드는 수동 진행합니다.
   </footer>
 </main>
+
+<div id="lightbox" hidden>
+  <img id="lb-img" alt="확대 보기" referrerpolicy="no-referrer" />
+  <div class="lb-actions">
+    <button id="lb-save" type="button">이미지 저장 ↓</button>
+    <a id="lb-link" target="_blank" rel="noopener noreferrer" hidden>원본 페이지 열기 ↗</a>
+    <button id="lb-close" type="button">닫기 (Esc)</button>
+  </div>
+  <span class="hint">저장이 막히는 사이트는 새 탭으로 열립니다 — 거기서 우클릭 저장하세요.</span>
+</div>
+
 <script>
+  const $ = (id) => document.getElementById(id);
+  let current = null;
+
+  function openLightbox(img) {{
+    current = {{
+      full: img.dataset.full,
+      link: img.dataset.link,
+      name: img.dataset.name,
+    }};
+    $("lb-img").src = current.full;
+    $("lb-link").hidden = !current.link;
+    if (current.link) $("lb-link").href = current.link;
+    $("lightbox").hidden = false;
+  }}
+
+  function closeLightbox() {{
+    $("lightbox").hidden = true;
+    $("lb-img").removeAttribute("src");
+  }}
+
   document.addEventListener("click", async (event) => {{
-    const button = event.target.closest("button[data-copy]");
-    if (!button) return;
-    await navigator.clipboard.writeText(
-      document.getElementById("t" + button.dataset.copy).textContent
-    );
-    button.textContent = "복사됨 ✓";
-    setTimeout(() => (button.textContent = "복사"), 1500);
+    const copyButton = event.target.closest("button[data-copy]");
+    if (copyButton) {{
+      await navigator.clipboard.writeText(
+        $("t" + copyButton.dataset.copy).textContent
+      );
+      copyButton.textContent = "복사됨 ✓";
+      setTimeout(() => (copyButton.textContent = "복사"), 1500);
+      return;
+    }}
+    if (event.target.closest("#lightbox")) return;
+    const thumb = event.target.closest("img.thumb");
+    if (thumb) openLightbox(thumb);
   }});
+
+  $("lightbox").addEventListener("click", (event) => {{
+    if (!event.target.closest(".lb-actions")) closeLightbox();
+  }});
+  $("lb-close").onclick = closeLightbox;
+  document.addEventListener("keydown", (event) => {{
+    if (event.key === "Escape") closeLightbox();
+  }});
+
+  // 사진은 다른 도메인(CDN)에 있다. 무신사·WEAR는 CORS를 허용하지 않아
+  // blob으로 내려받을 수 없으므로, 막히면 새 탭으로 열어 직접 저장하게 한다.
+  $("lb-save").onclick = async () => {{
+    if (!current) return;
+    try {{
+      const response = await fetch(current.full, {{ referrerPolicy: "no-referrer" }});
+      if (!response.ok) throw new Error("fetch 실패");
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = (current.name || "look") + ".jpg";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    }} catch (error) {{
+      window.open(current.full, "_blank", "noopener");
+    }}
+  }};
 </script>
 </body>
 </html>

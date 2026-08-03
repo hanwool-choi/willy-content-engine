@@ -57,6 +57,16 @@ class Settings:
         )
 
 
+# 소스별 사이트 오리진. 수집한 링크가 상대경로(/kr/ko/..., /rei718/...)로
+# 오는 곳이 있어서, 게시 페이지에서 절대 URL로 되돌릴 때 쓴다.
+SOURCE_ORIGINS = {
+    "musinsa_snap": "https://www.musinsa.com",
+    "wear_men": "https://wear.jp",
+    "wear_women": "https://wear.jp",
+    "uniqlo_men": "https://www.uniqlo.com",
+    "uniqlo_women": "https://www.uniqlo.com",
+}
+
 SOURCE_URLS = {
     # /snap/main/today는 무신사 자체 AI 코디로 도배된 랜딩이다(2026-08 확인).
     # 유저 스냅이 모이는 '스냅' 탭을 쓴다. 여기도 AI 코디가 섞여 있어

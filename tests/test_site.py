@@ -177,3 +177,71 @@ def test_warning_messages_are_escaped():
     html = render_site(st, TEXTS, STAMP)
 
     assert "<script>alert(9)</script>" not in html
+
+
+# ── 원본 링크 절대화 ──────────────────────────────────────
+
+def test_relative_source_links_become_absolute():
+    """유니클로·WEAR는 상대경로 href를 준다. 그대로 두면 게시 도메인
+    (github.io)으로 붙어 깨진다."""
+    uniqlo = LookAnalysis(
+        look_id="U1", source="uniqlo_men", gender=Gender.MEN, temp_range=(24, 32),
+        rain_ok=False, season="summer", style_tags=[],
+        source_url="/kr/ko/stylingbook/stylehint/15043829",
+        image_url="https://cdn.test/u.jpg",
+    )
+    wear = LookAnalysis(
+        look_id="W1", source="wear_men", gender=Gender.MEN, temp_range=(24, 32),
+        rain_ok=False, season="summer", style_tags=[],
+        source_url="/rei718/27136486/", image_url="https://cdn.test/w.jpg",
+    )
+
+    html = render_site(state_with(looks=[uniqlo, wear], assignment={}), TEXTS, STAMP)
+
+    assert "https://www.uniqlo.com/kr/ko/stylingbook/stylehint/15043829" in html
+    assert "https://wear.jp/rei718/27136486/" in html
+    assert 'href="/kr/ko' not in html
+    assert 'href="/rei718' not in html
+
+
+def test_absolute_source_link_is_left_alone():
+    html = render_site(state_with(), TEXTS, STAMP)
+
+    assert "https://www.musinsa.com/snap/1" in html
+    assert "https://www.musinsa.comhttps://" not in html
+
+
+def test_non_http_source_link_is_dropped():
+    """스킴이 http(s)가 아니면 링크를 걸지 않는다."""
+    evil = look(source_url="javascript:alert(1)")
+
+    html = render_site(state_with(looks=[evil], assignment={}), TEXTS, STAMP)
+
+    assert "javascript:alert" not in html
+
+
+# ── 확대 보기와 이미지 저장 ────────────────────────────────
+
+def test_thumbnails_carry_lightbox_data():
+    html = render_site(state_with(), TEXTS, STAMP)
+
+    assert 'data-full="https://cdn.test/a.jpg"' in html
+    assert 'data-link="https://www.musinsa.com/snap/1"' in html
+
+
+def test_page_has_lightbox_with_save_and_source_actions():
+    html = render_site(state_with(), TEXTS, STAMP)
+
+    assert 'id="lightbox"' in html
+    assert "이미지 저장" in html
+    assert "원본 페이지" in html
+    assert "Escape" in html, "Esc로 닫는 처리가 없다"
+
+
+def test_save_falls_back_to_new_tab_when_cors_blocks_fetch():
+    """무신사·WEAR CDN은 CORS를 허용하지 않아 blob 저장이 실패한다.
+    그때는 새 탭으로 열어 사용자가 직접 저장할 수 있어야 한다."""
+    html = render_site(state_with(), TEXTS, STAMP)
+
+    assert "window.open" in html
+    assert "createObjectURL" in html
