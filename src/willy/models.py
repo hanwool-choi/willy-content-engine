@@ -22,6 +22,7 @@ class WarningCode(str, Enum):
     RAIN_SUBSTITUTE = "RAIN_SUBSTITUTE"
     POOL_TOO_SMALL = "POOL_TOO_SMALL"
     CONDITIONAL_PICK = "CONDITIONAL_PICK"
+    AI_FILTERED = "AI_FILTERED"
 
 
 def temp_repr(temp_max: int, temp_min: int) -> float:
@@ -67,6 +68,8 @@ class LookAnalysis:
     season: str  # "spring" | "summer" | "fall" | "winter"
     style_tags: list[str]
     image_path: Path | None = None
+    # 무신사가 피드에 섞어 내보내는 자체 AI 코디 판정. 발행 후보에서 뺀다.
+    is_ai: bool = False
 
     @property
     def temp_median(self) -> float:

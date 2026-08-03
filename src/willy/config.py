@@ -24,8 +24,10 @@ SEOUL_LON = 126.978
 
 # 소스별 수집량. 무신사가 주력이고(스트릿 톤 다양성), 유니클로 M/W는
 # 무신사가 한쪽 성별로 쏠렸을 때를 위한 성별 안전핀이다.
+# 무신사 스냅 피드에는 자체 AI 코디가 섞여 있어(분석에서 걸러냄),
+# 걸러진 뒤에도 6장쯤 남도록 여유를 두고 8장을 걷는다.
 SOURCE_QUOTAS = {
-    "musinsa_snap": 6,
+    "musinsa_snap": 8,
     "uniqlo_men": 2,
     "uniqlo_women": 2,
 }
@@ -54,7 +56,10 @@ class Settings:
 
 
 SOURCE_URLS = {
-    "musinsa_snap": "https://www.musinsa.com/snap/main/today",
+    # /snap/main/today는 무신사 자체 AI 코디로 도배된 랜딩이다(2026-08 확인).
+    # 유저 스냅이 모이는 '스냅' 탭을 쓴다. 여기도 AI 코디가 섞여 있어
+    # 분석 단계의 is_ai 판정으로 걸러낸다.
+    "musinsa_snap": "https://www.musinsa.com/snap/main/snap",
     "uniqlo_women": "https://www.uniqlo.com/kr/ko/stylingbook/stylehint/women",
     "uniqlo_men": "https://www.uniqlo.com/kr/ko/stylingbook/stylehint/men",
 }

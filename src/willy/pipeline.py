@@ -84,11 +84,28 @@ class Pipeline:
             list(SOURCE_SPECS.values()), quotas=self.source_quotas
         )
 
-        looks = self.analyzer.analyze_batch(raw_looks, week[0])
+        analyses = self.analyzer.analyze_batch(raw_looks, week[0])
+
+        # AI 생성 판정 이미지는 발행 후보·아카이브 모두에서 뺀다. 남의 AI
+        # 이미지를 재생성 원본으로 쓰면 채널 정체성도 저작권도 애매해진다.
+        looks = [a for a in analyses if not a.is_ai]
+        ai_filtered = len(analyses) - len(looks)
+        topup_warnings: list[Warning] = []
+        if ai_filtered:
+            topup_warnings.append(
+                Warning(
+                    code=WarningCode.AI_FILTERED,
+                    slot_date=None,
+                    gender=None,
+                    message=f"AI 생성으로 판정된 이미지 {ai_filtered}장을 제외했습니다.",
+                )
+            )
+
         for analysis in looks:
             self.archive.save(analysis)
 
-        looks, topup_warnings = self._top_up_from_archive(looks, week[0])
+        looks, more_warnings = self._top_up_from_archive(looks, week[0])
+        topup_warnings += more_warnings
 
         assignment, warnings, caveats = assign(
             looks, week, archive=self.archive, picks_per_gender=self.picks_per_gender

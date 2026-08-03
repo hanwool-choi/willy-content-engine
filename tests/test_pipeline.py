@@ -48,8 +48,9 @@ class FakeCollector:
 
 
 class FakeAnalyzer:
-    def __init__(self, rain_ok: bool = True):
+    def __init__(self, rain_ok: bool = True, ai_ids: set[str] | None = None):
         self.rain_ok = rain_ok
+        self.ai_ids = ai_ids or set()
         self.last_day = None
         self.calls = 0
 
@@ -71,6 +72,7 @@ class FakeAnalyzer:
                     season="summer",
                     style_tags=["미니멀"],
                     image_path=raw.image_path,
+                    is_ai=raw.look_id in self.ai_ids,
                 )
             )
         return out
@@ -149,6 +151,24 @@ def test_gather_fails_loudly_when_batch_analysis_fails(pipeline: Pipeline):
 
     with pytest.raises(ValueError, match="분석 결과를 파싱"):
         pipeline.gather(base_date=date(2026, 8, 3))
+
+
+def test_gather_excludes_ai_generated_looks(tmp_path: Path):
+    """AI 생성으로 판정된 이미지는 발행 후보·아카이브에서 모두 뺀다.
+
+    무신사가 자체 AI 코디를 스냅 피드에 섞어 내보내는데, 남의 AI 이미지를
+    재생성 원본으로 쓰면 채널 정체성도 저작권도 애매해진다.
+    """
+    pipeline = make_pipeline(
+        tmp_path, analyzer=FakeAnalyzer(ai_ids={"L0", "L2"})
+    )
+
+    state = pipeline.gather(base_date=date(2026, 8, 3))
+
+    ids = {look.look_id for look in state.looks}
+    assert "L0" not in ids and "L2" not in ids
+    assert pipeline.archive.count() == 12  # 14 - AI 2장
+    assert WarningCode.AI_FILTERED in [w.code for w in state.warnings]
 
 
 def test_gather_does_not_write_to_outputs(pipeline: Pipeline, tmp_path: Path):

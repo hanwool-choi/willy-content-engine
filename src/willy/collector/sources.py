@@ -22,9 +22,11 @@ SOURCE_SPECS: dict[str, SourceSpec] = {
     "musinsa_snap": SourceSpec(
         name="musinsa_snap",
         url=SOURCE_URLS["musinsa_snap"],
-        card_selector="[class*='SnapItem'], [data-snap-id], article",
+        # 스냅 탭의 각 룩은 SnapFeedCard__Link <a>가 감싼다. 카드 자체가
+        # 링크라 link_selector 없이 수집기가 카드 href를 폴백으로 읽는다.
+        card_selector="[class*='SnapFeedCard__Link']",
         image_selector="img",
-        link_selector="a",
+        link_selector=None,
     ),
     "uniqlo_women": SourceSpec(
         name="uniqlo_women",

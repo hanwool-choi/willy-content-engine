@@ -178,6 +178,27 @@ def test_batch_rejects_missing_required_key(images, day):
         analyzer.analyze_batch(raws(images), day)
 
 
+def test_batch_marks_ai_generated_looks(images, day):
+    """무신사 AI 코디처럼 생성 이미지로 판정되면 is_ai가 켜진다."""
+    data = json.loads(valid_batch())
+    data[0]["is_ai"] = True
+    analyzer = LookAnalyzer(api_key="k", client=FakeClient(json.dumps(data)))
+
+    results = analyzer.analyze_batch(raws(images), day)
+
+    assert results[0].is_ai is True
+    assert results[1].is_ai is False  # 키가 없으면 실제 사진으로 본다
+
+
+def test_batch_prompt_asks_about_ai_watermark(images, day):
+    client = FakeClient(valid_batch())
+    LookAnalyzer(api_key="k", client=client).analyze_batch(raws(images), day)
+
+    content = client.messages.last_kwargs["messages"][0]["content"]
+    prompt = next(b["text"] for b in content if b["type"] == "text")
+    assert "is_ai" in prompt
+
+
 def test_batch_rejects_temp_range_that_collapses_after_truncation(images, day):
     """[24.1, 24.9]는 정수 절삭 후 (24, 24)로 붕괴한다. 거부한다."""
     bad = valid_batch().replace("[24, 30]", "[24.1, 24.9]")

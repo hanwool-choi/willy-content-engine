@@ -34,8 +34,14 @@ def batch_prompt(count: int, day: DayWeather) -> str:
   "gender": "men" 또는 "women",
   "temp_range": [최저, 최고],
   "rain_ok": true 또는 false,
-  "style_tags": 한국어 스타일 키워드 2~4개
+  "style_tags": 한국어 스타일 키워드 2~4개,
+  "is_ai": true 또는 false
 }}
+
+is_ai 판단 기준: 실제 인물 스냅이 아니라 AI로 생성·합성된 이미지면 true.
+좌하단 "AI로 생성" 워터마크, 균일한 무지 스튜디오 배경 위 "MUSINSA" 로고,
+비현실적으로 매끈한 피부·손가락이 단서다. 일반 사용자가 찍은 일상
+사진(거울샷, 야외, 실내 스냅)은 false.
 
 temp_range 판단 기준 (이 착장이 적합한 기온 구간, 정수 ℃):
 - 반팔 단독, 얇은 소재 -> 24~32
@@ -118,6 +124,7 @@ def build_analysis(raw_look: RawLook, data: dict) -> LookAnalysis:
         season=derive_season(median, raw_look.collected_at.month),
         style_tags=list(data.get("style_tags", [])),
         image_path=raw_look.image_path,
+        is_ai=bool(data.get("is_ai", False)),
     )
 
 
