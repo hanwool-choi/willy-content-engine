@@ -41,6 +41,7 @@
   <button id="btn-gather">수집</button>
   <button id="btn-generate" disabled>1차 컨펌 · AI 생성</button>
   <button id="btn-finalize" disabled>최종 컨펌 · 폴더 생성</button>
+  <span id="busy" class="muted" hidden></span>
 </p>
 
 <div id="warnings"></div>
@@ -146,19 +147,52 @@
     return response.json();
   }
 
-  $("btn-gather").onclick = async () => {
-    render(await call("/api/gather", { base_date: $("base").value }));
-    $("btn-generate").disabled = false;
-    $("btn-finalize").disabled = true;
-  };
+  // 수집·분석은 몇 분씩 걸린다. 도는 동안 버튼을 잠그지 않으면
+  // 멈춘 걸로 오해해 다시 누르게 되고, 수집·분석이 중복 실행된다.
+  const BUTTONS = ["btn-gather", "btn-generate", "btn-finalize"];
 
-  $("btn-generate").onclick = async () => {
-    render(await call("/api/generate"));
-    $("btn-finalize").disabled = false;
-  };
+  async function withBusy(message, task) {
+    const previous = BUTTONS.map((id) => $(id).disabled);
+    BUTTONS.forEach((id) => ($(id).disabled = true));
+    $("busy").textContent = message;
+    $("busy").hidden = false;
+    const started = Date.now();
+    const ticker = setInterval(() => {
+      const minutes = Math.floor((Date.now() - started) / 60000);
+      $("busy").textContent = message + (minutes ? ` (${minutes}분 경과)` : "");
+    }, 15000);
+    try {
+      await task();
+    } catch (error) {
+      // 실패하면 이전 버튼 상태로 되돌려 다시 시도할 수 있게 한다.
+      BUTTONS.forEach((id, i) => ($(id).disabled = previous[i]));
+      throw error;
+    } finally {
+      clearInterval(ticker);
+      $("busy").hidden = true;
+    }
+  }
 
-  $("btn-finalize").onclick = async () => {
-    const data = await call("/api/finalize");
-    $("result").textContent = "생성 완료: " + data.output_path;
-  };
+  $("btn-gather").onclick = () =>
+    withBusy("수집·분석 중… 5~10분 걸립니다. 창을 닫지 마세요.", async () => {
+      render(await call("/api/gather", { base_date: $("base").value }));
+      $("btn-gather").disabled = false;
+      $("btn-generate").disabled = false;
+      $("btn-finalize").disabled = true;
+    });
+
+  $("btn-generate").onclick = () =>
+    withBusy("이미지 생성 중…", async () => {
+      render(await call("/api/generate"));
+      $("btn-gather").disabled = false;
+      $("btn-generate").disabled = false;
+      $("btn-finalize").disabled = false;
+    });
+
+  $("btn-finalize").onclick = () =>
+    withBusy("폴더·문서 생성 중…", async () => {
+      const data = await call("/api/finalize");
+      $("result").textContent = "생성 완료: " + data.output_path;
+      $("btn-gather").disabled = false;
+    });
 </script>

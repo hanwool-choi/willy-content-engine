@@ -222,3 +222,71 @@ def test_regather_closes_the_previous_archive(client: TestClient):
     assert first.status_code == 200
     assert second.status_code == 200
     assert client.post("/api/generate").status_code == 200
+
+
+def test_gather_rejects_concurrent_run(tmp_path: Path):
+    """수집이 도는 동안 또 수집을 요청하면 409로 거부한다.
+
+    수집 한 번에 비전 API 호출이 12번 붙는다. 진행 표시를 못 본
+    사용자가 버튼이나 새 탭에서 거듭 누르면 호출 한도만 태운다.
+    """
+    import threading
+
+    from tests.test_pipeline import (
+        FakeAnalyzer,
+        FakeCollector,
+        FakeGenerator,
+        FakeWeather,
+    )
+    from willy.archive import Archive
+    from willy.generator.preset import load_preset
+    from willy.pipeline import Pipeline
+
+    entered = threading.Event()
+    release = threading.Event()
+
+    class SlowCollector(FakeCollector):
+        def collect(self, *args, **kwargs):
+            entered.set()
+            assert release.wait(timeout=5), "테스트가 release를 놓쳤습니다"
+            return super().collect(*args, **kwargs)
+
+    preset = load_preset(Path(__file__).parents[1] / "presets" / "concept_v1.yaml")
+
+    def factory() -> Pipeline:
+        return Pipeline(
+            weather_client=FakeWeather(),
+            collector=SlowCollector(tmp_path / "ws"),
+            analyzer=FakeAnalyzer(),
+            generator=FakeGenerator(tmp_path / "gen"),
+            archive=Archive(tmp_path / "a.db"),
+            preset=preset,
+            output_root=tmp_path / "outputs",
+        )
+
+    client = TestClient(create_app(factory))
+    results = {}
+
+    def first_gather():
+        results["first"] = client.post(
+            "/api/gather", json={"base_date": "2026-08-03"}
+        ).status_code
+
+    worker = threading.Thread(target=first_gather)
+    worker.start()
+    try:
+        assert entered.wait(timeout=5), "첫 수집이 시작되지 않았습니다"
+
+        second = client.post("/api/gather", json={"base_date": "2026-08-03"})
+        assert second.status_code == 409
+    finally:
+        release.set()
+        worker.join(timeout=10)
+
+    assert results["first"] == 200
+    # 첫 수집이 끝났으니 다시 수집할 수 있어야 한다.
+    release.set()
+    entered.clear()
+    assert (
+        client.post("/api/gather", json={"base_date": "2026-08-03"}).status_code == 200
+    )

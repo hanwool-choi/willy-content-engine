@@ -1,6 +1,7 @@
 """로컬 컨펌 UI. 2단계 컨펌을 서버가 강제한다."""
 from __future__ import annotations
 
+import threading
 from datetime import date
 from pathlib import Path
 from typing import Callable
@@ -120,16 +121,27 @@ def create_app(pipeline_factory: Callable[[], Pipeline]) -> FastAPI:
             raise HTTPException(404, "생성된 이미지가 없습니다.")
         return _serve(state.generated.get((slot_date, gender, pick)))
 
+    # 수집 한 번에 비전 호출이 12번 붙는다. 여러 탭·중복 클릭으로 수집이
+    # 겹쳐 돌면 API 한도만 태우므로 서버에서 한 번에 하나만 허용한다.
+    gather_lock = threading.Lock()
+
     @app.post("/api/gather")
     def gather(request: GatherRequest) -> dict:
-        previous = ctx["pipeline"]
-        if previous is not None:
-            previous.archive.close()
+        if not gather_lock.acquire(blocking=False):
+            raise HTTPException(
+                409, "수집이 이미 진행 중입니다. 끝날 때까지 기다려 주세요."
+            )
+        try:
+            previous = ctx["pipeline"]
+            if previous is not None:
+                previous.archive.close()
 
-        pipeline = pipeline_factory()
-        state = pipeline.gather(base_date=request.base_date)
-        ctx.update(pipeline=pipeline, state=state, generated=False)
-        return _serialize(state)
+            pipeline = pipeline_factory()
+            state = pipeline.gather(base_date=request.base_date)
+            ctx.update(pipeline=pipeline, state=state, generated=False)
+            return _serialize(state)
+        finally:
+            gather_lock.release()
 
     @app.post("/api/generate")
     def generate() -> dict:
