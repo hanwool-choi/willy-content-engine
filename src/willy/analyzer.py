@@ -5,12 +5,15 @@ import base64
 import json
 import re
 
+import httpx
 from anthropic import Anthropic
 
 from willy.images import sniff
 from willy.models import Gender, LookAnalysis, RawLook
 
 MODEL = "claude-sonnet-5"
+GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
 REQUIRED_KEYS = (
     "gender",
@@ -76,13 +79,62 @@ def _extract_json(text: str) -> dict:
         raise ValueError(f"분석 결과를 파싱할 수 없습니다: {exc}") from exc
 
 
+def build_analysis(raw_look: RawLook, data: dict) -> LookAnalysis:
+    """모델 응답 dict를 검증해 LookAnalysis로 만든다. 공급자와 무관하다."""
+    missing = [key for key in REQUIRED_KEYS if key not in data]
+    if missing:
+        raise ValueError(f"분석 결과를 파싱할 수 없습니다: 필수 키 누락 {missing}")
+
+    raw_range = data["temp_range"]
+    try:
+        lo, hi = (int(value) for value in raw_range)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"분석 결과를 파싱할 수 없습니다: temp_range={raw_range!r}"
+        ) from exc
+
+    # 정수 절삭 뒤에 검사해야 한다. [24.1, 24.9]는 절삭하면 (24, 24)로 붕괴한다.
+    if lo >= hi:
+        raise ValueError(f"temp_range 순서가 잘못되었습니다: {raw_range}")
+
+    try:
+        gender = Gender(data["gender"])
+    except ValueError as exc:
+        raise ValueError(
+            f"분석 결과를 파싱할 수 없습니다: gender={data['gender']!r}"
+        ) from exc
+
+    median = (lo + hi) / 2
+    return LookAnalysis(
+        look_id=raw_look.look_id,
+        source=raw_look.source,
+        gender=gender,
+        sleeve=data["sleeve"],
+        outer=data.get("outer"),
+        layers=int(data["layers"]),
+        fabric_weight=data["fabric_weight"],
+        coverage=data["coverage"],
+        temp_range=(lo, hi),
+        rain_ok=bool(data["rain_ok"]),
+        season=derive_season(median, raw_look.collected_at.month),
+        style_tags=list(data.get("style_tags", [])),
+        palette=list(data.get("palette", [])),
+        image_path=raw_look.image_path,
+    )
+
+
+def _encode_image(raw_look: RawLook) -> tuple[str, str]:
+    media_type, _suffix = sniff(raw_look.image_path)
+    encoded = base64.standard_b64encode(raw_look.image_path.read_bytes()).decode()
+    return media_type, encoded
+
+
 class LookAnalyzer:
     def __init__(self, api_key: str, client=None):
         self._client = client or Anthropic(api_key=api_key)
 
     def analyze(self, raw_look: RawLook) -> LookAnalysis:
-        media_type, _suffix = sniff(raw_look.image_path)
-        encoded = base64.standard_b64encode(raw_look.image_path.read_bytes()).decode()
+        media_type, encoded = _encode_image(raw_look)
 
         response = self._client.messages.create(
             model=MODEL,
@@ -105,45 +157,51 @@ class LookAnalyzer:
             ],
         )
 
-        data = _extract_json(response.content[0].text)
+        return build_analysis(raw_look, _extract_json(response.content[0].text))
 
-        missing = [key for key in REQUIRED_KEYS if key not in data]
-        if missing:
-            raise ValueError(f"분석 결과를 파싱할 수 없습니다: 필수 키 누락 {missing}")
 
-        raw_range = data["temp_range"]
-        try:
-            lo, hi = (int(value) for value in raw_range)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(
-                f"분석 결과를 파싱할 수 없습니다: temp_range={raw_range!r}"
-            ) from exc
+class GeminiAnalyzer:
+    """Gemini API 룩 분석기. 무료 티어로도 하루치(비전 12회)는 넉넉하다.
 
-        # 정수 절삭 뒤에 검사해야 한다. [24.1, 24.9]는 절삭하면 (24, 24)로 붕괴한다.
-        if lo >= hi:
-            raise ValueError(f"temp_range 순서가 잘못되었습니다: {raw_range}")
+    별도 SDK 없이 REST를 직접 부른다. 키는 로그·프록시에 남는 URL 쿼리가
+    아니라 헤더로만 보낸다.
+    """
 
-        try:
-            gender = Gender(data["gender"])
-        except ValueError as exc:
-            raise ValueError(
-                f"분석 결과를 파싱할 수 없습니다: gender={data['gender']!r}"
-            ) from exc
+    def __init__(self, api_key: str, http=None):
+        self._api_key = api_key
+        self._http = http or httpx.Client(timeout=60)
 
-        median = (lo + hi) / 2
-        return LookAnalysis(
-            look_id=raw_look.look_id,
-            source=raw_look.source,
-            gender=gender,
-            sleeve=data["sleeve"],
-            outer=data.get("outer"),
-            layers=int(data["layers"]),
-            fabric_weight=data["fabric_weight"],
-            coverage=data["coverage"],
-            temp_range=(lo, hi),
-            rain_ok=bool(data["rain_ok"]),
-            season=derive_season(median, raw_look.collected_at.month),
-            style_tags=list(data.get("style_tags", [])),
-            palette=list(data.get("palette", [])),
-            image_path=raw_look.image_path,
+    def analyze(self, raw_look: RawLook) -> LookAnalysis:
+        media_type, encoded = _encode_image(raw_look)
+
+        response = self._http.post(
+            f"{GEMINI_BASE_URL}/models/{GEMINI_MODEL}:generateContent",
+            headers={"x-goog-api-key": self._api_key},
+            json={
+                "contents": [
+                    {
+                        "parts": [
+                            {
+                                "inline_data": {
+                                    "mime_type": media_type,
+                                    "data": encoded,
+                                }
+                            },
+                            {"text": ANALYSIS_PROMPT},
+                        ]
+                    }
+                ]
+            },
         )
+        response.raise_for_status()
+
+        body = response.json()
+        try:
+            parts = body["candidates"][0]["content"]["parts"]
+            text = next(part["text"] for part in parts if "text" in part)
+        except (KeyError, IndexError, StopIteration) as exc:
+            raise ValueError(
+                "분석 결과를 파싱할 수 없습니다: 응답에 텍스트가 없습니다"
+            ) from exc
+
+        return build_analysis(raw_look, _extract_json(text))

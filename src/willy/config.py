@@ -26,6 +26,7 @@ SEOUL_LON = 126.978
 class Settings:
     kma_service_key: str
     anthropic_api_key: str
+    gemini_api_key: str = ""
     horizon_days: int = 1
     picks_per_gender: int = 2
     # 성별당 이 수에 못 미치면 아카이브에서 유사 룩으로 채운다.
@@ -40,6 +41,7 @@ class Settings:
         return cls(
             kma_service_key=os.environ.get("KMA_SERVICE_KEY", ""),
             anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
+            gemini_api_key=os.environ.get("GEMINI_API_KEY", ""),
         )
 
 

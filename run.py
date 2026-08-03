@@ -19,7 +19,7 @@ from pathlib import Path
 # pythonpath 설정은 pytest 전용이라 여기까지 오지 않는다.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from willy.analyzer import LookAnalyzer
+from willy.analyzer import GeminiAnalyzer, LookAnalyzer
 from willy.archive import Archive
 from willy.collector.browser import browser_page
 from willy.collector.collector import Collector
@@ -51,10 +51,22 @@ def build_pipeline() -> Pipeline:
         "기상청(KMA)" if settings.kma_service_key else "Open-Meteo (키 없음)",
     )
 
+    # 키가 있는 쪽을 쓴다. 둘 다 있으면 Claude, 둘 다 없으면 기존처럼
+    # Claude 분석기를 만들어 두고 호출 시점에 실패하게 둔다.
+    if settings.anthropic_api_key:
+        analyzer = LookAnalyzer(settings.anthropic_api_key)
+        log.info("분석 공급자: Claude")
+    elif settings.gemini_api_key:
+        analyzer = GeminiAnalyzer(settings.gemini_api_key)
+        log.info("분석 공급자: Gemini")
+    else:
+        analyzer = LookAnalyzer(settings.anthropic_api_key)
+        log.warning("분석 키가 없습니다. ANTHROPIC_API_KEY 또는 GEMINI_API_KEY를 .env에 넣으세요")
+
     return Pipeline(
         weather_client=weather,
         collector=Collector(settings.workspace, page_factory=page_factory),
-        analyzer=LookAnalyzer(settings.anthropic_api_key),
+        analyzer=analyzer,
         generator=NoopGenerator(settings.workspace / "generated"),
         archive=Archive(settings.archive_db),
         preset=load_preset(PROJECT_ROOT / "presets" / "concept_v1.yaml"),
