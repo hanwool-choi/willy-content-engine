@@ -78,6 +78,29 @@ python run.py
 
 브라우저에서 http://127.0.0.1:8765 접속.
 
+## 매일 아침 자동 게시 (GitHub Actions + Pages)
+
+`.github/workflows/daily.yml` 이 **매일 08:00 KST**(23:00 UTC)에 수집·분석·
+텍스트 생성을 돌리고, 결과를 정적 보드로 만들어 GitHub Pages에 올린다.
+PC를 켜둘 필요가 없고 주소가 고정된다.
+
+```bash
+python build_site.py site   # 로컬에서 같은 결과를 만들어 볼 때
+```
+
+준비 (저장소 설정에서 한 번만):
+
+1. **Settings → Pages → Source: GitHub Actions** 로 지정
+2. **Settings → Secrets and variables → Actions** 에 `GEMINI_API_KEY`,
+   `KMA_SERVICE_KEY` 등록 (환경변수가 `.env`보다 우선한다)
+3. 무료 플랜에서 Pages는 **공개 저장소**만 지원한다. 공개로 돌리기 전에
+   `.env`에서 키를 비우고 재발급할 것 — 공개 저장소의 키는 봇이 즉시 긁어간다
+
+수동 실행은 Actions 탭 → 워크플로 선택 → Run workflow.
+
+게시되는 페이지는 사진을 재업로드하지 않고 **각 출처의 원본 주소를 그대로
+표시**한다(핫링크). 제3자 저작물을 저장소에 담지 않기 위해서다.
+
 ## 외부 공유 (선택)
 
 서버가 뜬 상태에서 별도 터미널에서:

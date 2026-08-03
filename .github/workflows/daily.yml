@@ -1,0 +1,65 @@
+name: 매일 아침 보드 게시
+
+on:
+  schedule:
+    # 23:00 UTC = 08:00 KST. GitHub 크론은 UTC만 받는다.
+    - cron: "0 23 * * *"
+  workflow_dispatch: # 수동 실행 (Actions 탭 → Run workflow)
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 예약 실행과 수동 실행이 겹쳐도 게시는 하나만 진행한다.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 의존성 설치
+        run: pip install -e ".[dev]"
+
+      - name: Chromium 설치
+        run: python -m playwright install --with-deps chromium
+
+      # 러너는 매번 새 머신이라 그냥 두면 아카이브가 비어 '4주 내 재등장
+      # 금지'와 유사룩 보충이 무력화된다. 실행 간에 DB를 물려준다.
+      - name: 룩 아카이브 복원
+        uses: actions/cache@v4
+        with:
+          path: archive
+          key: willy-archive-${{ github.run_id }}
+          restore-keys: willy-archive-
+
+      - name: 보드 생성
+        env:
+          # 저장소를 공개로 돌린 뒤에는 .env 대신 이 시크릿이 쓰인다.
+          # (Settings → Secrets and variables → Actions 에서 등록)
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          KMA_SERVICE_KEY: ${{ secrets.KMA_SERVICE_KEY }}
+        run: python build_site.py site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

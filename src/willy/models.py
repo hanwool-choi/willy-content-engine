@@ -55,6 +55,9 @@ class RawLook:
     image_path: Path
     capture_method: str  # "original_url" | "screenshot"
     source_url: str | None = None
+    # CDN 원본 주소. 정적 페이지가 사진을 재업로드하지 않고 이 주소로
+    # 바로 띄운다. 캡처로 만든 사진은 없다(None).
+    image_url: str | None = None
     raw_meta: dict = field(default_factory=dict)
     collected_at: datetime = field(default_factory=datetime.now)
 
@@ -77,6 +80,8 @@ class LookAnalysis:
     is_ai: bool = False
     # 수집 시점의 원본 페이지 링크. UI 확대 보기에서 출처로 이동할 때 쓴다.
     source_url: str | None = None
+    # CDN 원본 주소. 정적 페이지가 핫링크로 띄운다.
+    image_url: str | None = None
 
     @property
     def temp_median(self) -> float:

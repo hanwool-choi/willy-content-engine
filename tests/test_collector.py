@@ -343,3 +343,22 @@ def test_collect_skips_excluded_hashes_and_fills_from_later_cards(tmp_path: Path
     contents = b"".join(look.image_path.read_bytes() for look in looks)
     assert b"a.jpg" not in contents
     assert b"b.jpg" in contents and b"c.jpg" in contents
+
+
+def test_collect_records_original_image_url(tmp_path: Path):
+    """CDN 원본 주소를 남긴다. 정적 페이지가 사진을 재업로드하지 않고
+    이 주소로 바로 띄운다 (핫링크)."""
+    page = FakePage([FakeElement("https://cdn.test/a.jpg", "https://x.test/1")])
+
+    looks = make_collector(tmp_path, page).collect([spec()], limit_per_source=5)
+
+    assert looks[0].image_url == "https://cdn.test/a.jpg"
+
+
+def test_screenshot_fallback_has_no_image_url(tmp_path: Path):
+    """캡처로 만든 사진은 CDN 주소가 없다. 없는 걸 있다고 하면 안 된다."""
+    page = FakePage([FakeElement(None, "https://x.test/1")])
+
+    looks = make_collector(tmp_path, page).collect([spec()], limit_per_source=5)
+
+    assert looks[0].image_url is None

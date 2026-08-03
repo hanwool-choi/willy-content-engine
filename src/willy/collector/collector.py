@@ -144,6 +144,8 @@ class Collector:
                     image_path=dest,
                     capture_method=method,
                     source_url=source_url,
+                    # 캡처로 대체된 경우엔 CDN 주소가 성립하지 않는다.
+                    image_url=image_url if method == "original_url" else None,
                 )
             )
 

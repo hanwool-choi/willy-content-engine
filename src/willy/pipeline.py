@@ -171,6 +171,7 @@ class Pipeline:
                 style_tags=[],
                 image_path=raw.image_path,
                 source_url=raw.source_url,
+                image_url=raw.image_url,
             )
             for raw in raw_looks
         ]

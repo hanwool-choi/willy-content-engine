@@ -12,3 +12,4 @@ archive/
 .claude/settings.local.json
 .claude/launch.json
 .demo_cache/
+site/
