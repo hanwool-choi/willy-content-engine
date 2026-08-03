@@ -8,6 +8,7 @@ GitHub Actions가 이걸 돌리고 결과를 Pages로 게시한다. 서버를 �
 from __future__ import annotations
 
 import logging
+import shutil
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -36,6 +37,23 @@ from willy.weather.openmeteo import OpenMeteoClient
 log = logging.getLogger("build_site")
 
 KST = timezone(timedelta(hours=9))
+
+
+OG_IMAGE_NAME = "og.png"
+
+
+def copy_og_image(assets_dir: Path, out_dir: Path) -> str | None:
+    """공유 미리보기 이미지를 게시 폴더로 옮기고 파일명을 돌려준다.
+
+    파일이 없으면 None. 없는 이미지를 og:image로 걸면 미리보기가 깨진
+    채로 뜨므로, 그때는 태그 자체를 넣지 않는다.
+    """
+    source = assets_dir / OG_IMAGE_NAME
+    if not source.exists():
+        log.warning("OG 이미지가 없습니다: %s — 공유 미리보기 이미지 없이 게시", source)
+        return None
+    shutil.copyfile(source, out_dir / OG_IMAGE_NAME)
+    return OG_IMAGE_NAME
 
 
 def log_key_status(settings: Settings) -> None:
@@ -129,7 +147,8 @@ def main() -> None:
     texts = pipeline.write_texts(state)
     log.info("텍스트 %d종 생성", len(texts))
 
-    html = render_site(state, texts, datetime.now(KST))
+    og_image = copy_og_image(PROJECT_ROOT / "assets", out_dir)
+    html = render_site(state, texts, datetime.now(KST), og_image=og_image)
     (out_dir / "index.html").write_text(html, encoding="utf-8")
     # Pages가 _로 시작하는 경로를 Jekyll로 처리하지 않게 한다.
     (out_dir / ".nojekyll").write_text("", encoding="utf-8")

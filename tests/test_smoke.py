@@ -37,3 +37,31 @@ def test_run_module_exposes_builder():
 
     assert callable(run.build_pipeline)
     assert callable(run.main)
+
+
+def test_og_image_is_copied_into_the_published_folder(tmp_path):
+    """assets/og.png가 게시 폴더로 따라가야 링크 미리보기가 뜬다."""
+    import build_site
+
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / "og.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+    out = tmp_path / "site"
+    out.mkdir()
+
+    name = build_site.copy_og_image(assets, out)
+
+    assert name == "og.png"
+    assert (out / "og.png").read_bytes().startswith(b"\x89PNG")
+
+
+def test_missing_og_image_is_reported_as_none(tmp_path):
+    import build_site
+
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    out = tmp_path / "site"
+    out.mkdir()
+
+    assert build_site.copy_og_image(assets, out) is None
+    assert not (out / "og.png").exists()

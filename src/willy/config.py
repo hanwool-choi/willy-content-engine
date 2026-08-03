@@ -57,6 +57,14 @@ class Settings:
         )
 
 
+# 게시 페이지 주소. 공유 미리보기(og:image, og:url)는 절대 URL이어야
+# 카카오톡·슬랙 등이 읽는다.
+PAGES_BASE_URL = "https://hanwool-choi.github.io/willy-content-engine/"
+SITE_TITLE = "최윌리 옷장연구소 콘텐츠 플랫폼"
+SITE_DESCRIPTION = (
+    "매일 아침 8시, 내일 서울 날씨에 맞춘 코디 픽과 게시용 텍스트를 자동으로 정리합니다."
+)
+
 # 소스별 사이트 오리진. 수집한 링크가 상대경로(/kr/ko/..., /rei718/...)로
 # 오는 곳이 있어서, 게시 페이지에서 절대 URL로 되돌릴 때 쓴다.
 SOURCE_ORIGINS = {

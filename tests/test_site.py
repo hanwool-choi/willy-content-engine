@@ -245,3 +245,47 @@ def test_save_falls_back_to_new_tab_when_cors_blocks_fetch():
 
     assert "window.open" in html
     assert "createObjectURL" in html
+
+
+# ── 공유 미리보기(오픈그래프) ──────────────────────────────
+
+def test_page_title_is_the_platform_name():
+    html = render_site(state_with(), TEXTS, STAMP)
+
+    assert "<title>최윌리 옷장연구소 콘텐츠 플랫폼</title>" in html
+
+
+def test_open_graph_tags_for_link_previews():
+    html = render_site(state_with(), TEXTS, STAMP, og_image="og.png")
+
+    assert 'property="og:title" content="최윌리 옷장연구소 콘텐츠 플랫폼"' in html
+    assert 'property="og:type"' in html
+    assert 'property="og:description"' in html
+    assert 'name="twitter:card" content="summary_large_image"' in html
+
+
+def test_og_image_url_is_absolute():
+    """상대경로 og:image는 카카오톡·슬랙 등에서 무시된다."""
+    html = render_site(state_with(), TEXTS, STAMP, og_image="og.png")
+
+    assert (
+        'property="og:image" '
+        'content="https://hanwool-choi.github.io/willy-content-engine/og.png"' in html
+    )
+    assert 'property="og:url" content="https://hanwool-choi.github.io/' in html
+
+
+def test_absolute_og_image_is_left_alone():
+    html = render_site(
+        state_with(), TEXTS, STAMP, og_image="https://cdn.test/custom-og.png"
+    )
+
+    assert 'content="https://cdn.test/custom-og.png"' in html
+
+
+def test_no_og_image_tag_when_file_is_missing():
+    """이미지가 없는데 태그만 남기면 미리보기가 깨진 채로 뜬다."""
+    html = render_site(state_with(), TEXTS, STAMP, og_image=None)
+
+    assert "og:image" not in html
+    assert 'property="og:title"' in html, "이미지가 없어도 제목·설명은 남는다"

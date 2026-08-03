@@ -9,7 +9,12 @@ from __future__ import annotations
 from datetime import datetime
 from html import escape
 
-from willy.config import SOURCE_ORIGINS
+from willy.config import (
+    PAGES_BASE_URL,
+    SITE_DESCRIPTION,
+    SITE_TITLE,
+    SOURCE_ORIGINS,
+)
 from willy.models import DayWeather, Gender, LookAnalysis
 from willy.pipeline import PipelineState
 
@@ -138,11 +143,36 @@ def _text_card(index: int, entry: dict) -> str:
       </div>"""
 
 
+def _og_tags(og_image: str | None) -> str:
+    """링크 공유 미리보기용 메타. 이미지가 없으면 그 태그만 뺀다."""
+    tags = [
+        f'<meta property="og:title" content="{escape(SITE_TITLE)}" />',
+        '<meta property="og:type" content="website" />',
+        f'<meta property="og:description" content="{escape(SITE_DESCRIPTION)}" />',
+        f'<meta property="og:url" content="{escape(PAGES_BASE_URL)}" />',
+        f'<meta name="description" content="{escape(SITE_DESCRIPTION)}" />',
+        '<meta name="twitter:card" content="summary_large_image" />',
+    ]
+    if og_image:
+        url = (
+            og_image
+            if og_image.startswith(("http://", "https://"))
+            else PAGES_BASE_URL + og_image.lstrip("/")
+        )
+        tags.append(f'<meta property="og:image" content="{escape(url)}" />')
+        tags.append(f'<meta name="twitter:image" content="{escape(url)}" />')
+    return "\n".join(tags)
+
+
 def render_site(
-    state: PipelineState, texts: list[dict], generated_at: datetime
+    state: PipelineState,
+    texts: list[dict],
+    generated_at: datetime,
+    og_image: str | None = None,
 ) -> str:
     day = state.week[0]
     accent = _accent(day)
+    og_meta = _og_tags(og_image)
 
     slots = "".join(
         _slot_card(gender, pick, look, state.caveats.get((slot_date, gender, pick)))
@@ -169,8 +199,8 @@ def render_site(
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="robots" content="noindex" />
-<title>내일 뭐입지? · {day.date.month:02d}/{day.date.day:02d}</title>
+<title>{escape(SITE_TITLE)}</title>
+{og_meta}
 <style>
   :root {{
     --paper:#f1f2ef; --card:#fbfbf9; --ink:#1a1b1e; --ink-soft:#5c5f66;
