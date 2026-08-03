@@ -227,22 +227,35 @@ def test_degraded_mode_does_not_pollute_archive(tmp_path: Path):
     assert pipeline.archive.count() == 0
 
 
-def test_gather_excludes_ai_generated_looks(tmp_path: Path):
-    """AI 생성으로 판정된 이미지는 발행 후보·아카이브에서 모두 뺀다.
+def test_gather_keeps_at_most_one_ai_look_per_gender(tmp_path: Path):
+    """AI 생성 판정 이미지도 성별당 1장까지는 풀에 남긴다.
 
-    무신사가 자체 AI 코디를 스냅 피드에 섞어 내보내는데, 남의 AI 이미지를
-    재생성 원본으로 쓰면 채널 정체성도 저작권도 애매해진다.
+    무신사 AI 코디도 참고 소재로는 쓸 수 있다는 운영 판단. 다만 풀이
+    AI로 쏠리지 않게 성별당 1장으로 막고, 초과분만 뺀다.
     """
+    # FakeAnalyzer: 짝수 index=MEN, 홀수=WOMEN. 남 2장(L0,L2)·여 2장(L1,L3) AI
     pipeline = make_pipeline(
-        tmp_path, analyzer=FakeAnalyzer(ai_ids={"L0", "L2"})
+        tmp_path, analyzer=FakeAnalyzer(ai_ids={"L0", "L1", "L2", "L3"})
     )
 
     state = pipeline.gather(base_date=date(2026, 8, 3))
 
-    ids = {look.look_id for look in state.looks}
-    assert "L0" not in ids and "L2" not in ids
-    assert pipeline.archive.count() == 12  # 14 - AI 2장
+    ai_looks = [look for look in state.looks if look.is_ai]
+    men = [l for l in ai_looks if l.gender is Gender.MEN]
+    women = [l for l in ai_looks if l.gender is Gender.WOMEN]
+    assert len(men) == 1 and len(women) == 1
+    assert pipeline.archive.count() == 12  # 14 - 초과 AI 2장
     assert WarningCode.AI_FILTERED in [w.code for w in state.warnings]
+
+
+def test_gather_keeps_all_ai_looks_when_within_limit(tmp_path: Path):
+    """성별당 1장 이하면 아무것도 빼지 않고 경고도 없다."""
+    pipeline = make_pipeline(tmp_path, analyzer=FakeAnalyzer(ai_ids={"L0", "L1"}))
+
+    state = pipeline.gather(base_date=date(2026, 8, 3))
+
+    assert sum(1 for look in state.looks if look.is_ai) == 2
+    assert WarningCode.AI_FILTERED not in [w.code for w in state.warnings]
 
 
 def test_gather_does_not_write_to_outputs(pipeline: Pipeline, tmp_path: Path):

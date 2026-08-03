@@ -38,6 +38,7 @@ def _serialize(state: PipelineState) -> dict:
                 "style_tags": look.style_tags,
                 "image_url": f"/api/image/{look.look_id}",
                 "source_url": look.source_url,
+                "is_ai": look.is_ai,
                 "assigned": look.look_id in assigned_ids,
             }
             for look in state.looks
@@ -71,6 +72,7 @@ def _serialize(state: PipelineState) -> dict:
                 "caveat": state.caveats.get((slot_date, gender, pick)),
                 "image_url": f"/api/image/{look.look_id}" if look else None,
                 "source_url": look.source_url if look else None,
+                "is_ai": look.is_ai if look else False,
                 "generated_url": (
                     f"/api/generated/{slot_date.isoformat()}/{gender.value}/{pick}"
                     if (slot_date, gender, pick) in state.generated

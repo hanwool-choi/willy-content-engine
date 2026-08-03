@@ -167,6 +167,12 @@
     padding: 2px 6px; border-radius: 3px;
   }
   .look.is-assigned { border-color: var(--accent); }
+  .badge-ai {
+    font-size: 10px; font-weight: 700; letter-spacing: .05em;
+    color: #6b21a8; background: #f3e8ff;
+    padding: 2px 6px; border-radius: 3px;
+  }
+  .look .badge-ai { position: absolute; bottom: 58px; left: 11px; }
   .look.is-assigned::after {
     content: "배정"; position: absolute; top: 11px; right: 11px;
     font-size: 10px; font-weight: 700; color: #fff;
@@ -367,6 +373,7 @@
           <span class="pickno">픽${s.pick + 1} · ${esc(s.look_id)}</span>
         </header>
         ${s.caveat ? `<span class="badge-conditional">조건부 추천</span>` : ""}
+        ${s.is_ai ? `<span class="badge-ai">AI 생성 소스</span>` : ""}
         <div class="pair">${images.join("")}</div>
         ${s.temp_range ? `<span class="range">${esc(s.temp_range[0])}~${esc(s.temp_range[1])}℃ 적합</span>` : ""}
         <span class="tags">${s.style_tags.map(esc).join(" · ")}</span>
@@ -378,6 +385,7 @@
     return `
       <div class="look ${p.assigned ? "is-assigned" : ""}">
         <span class="src">${esc(sourceLabel(p.source))}</span>
+        ${p.is_ai ? `<span class="badge-ai">AI</span>` : ""}
         <img class="thumb" src="${esc(p.image_url)}" alt="${esc(p.look_id)}"
              data-link="${esc(absolutize(p.source, p.source_url) || "")}" loading="lazy" />
         <div class="meta">

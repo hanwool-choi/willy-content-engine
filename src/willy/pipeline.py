@@ -105,18 +105,29 @@ class Pipeline:
             log.exception("배치 분석 실패 — 분석 생략 모드로 진행합니다")
             return self._gather_without_analysis(raw_looks, week)
 
-        # AI 생성 판정 이미지는 발행 후보·아카이브 모두에서 뺀다. 남의 AI
-        # 이미지를 재생성 원본으로 쓰면 채널 정체성도 저작권도 애매해진다.
-        looks = [a for a in analyses if not a.is_ai]
-        ai_filtered = len(analyses) - len(looks)
+        # AI 생성 판정 이미지도 참고 소재로 쓸 수 있다 — 다만 풀이 AI로
+        # 쏠리지 않게 성별당 1장까지만 남기고 초과분을 뺀다.
+        looks: list[LookAnalysis] = []
+        ai_kept: dict[Gender, int] = {}
+        for analysis in analyses:
+            if analysis.is_ai:
+                if ai_kept.get(analysis.gender, 0) >= 1:
+                    continue
+                ai_kept[analysis.gender] = ai_kept.get(analysis.gender, 0) + 1
+            looks.append(analysis)
+
+        ai_dropped = len(analyses) - len(looks)
         topup_warnings: list[Warning] = []
-        if ai_filtered:
+        if ai_dropped:
             topup_warnings.append(
                 Warning(
                     code=WarningCode.AI_FILTERED,
                     slot_date=None,
                     gender=None,
-                    message=f"AI 생성으로 판정된 이미지 {ai_filtered}장을 제외했습니다.",
+                    message=(
+                        f"AI 생성 판정 이미지는 성별당 1장만 남기고 "
+                        f"{ai_dropped}장을 제외했습니다."
+                    ),
                 )
             )
 
