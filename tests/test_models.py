@@ -32,16 +32,10 @@ def test_look_analysis_temp_median():
         look_id="a",
         source="musinsa_snap",
         gender=Gender.MEN,
-        sleeve="short",
-        outer=None,
-        layers=1,
-        fabric_weight="light",
-        coverage="mid",
         temp_range=(23, 30),
         rain_ok=False,
         season="summer",
         style_tags=["미니멀"],
-        palette=["ecru"],
     )
     assert look.temp_median == 26.5
 

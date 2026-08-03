@@ -11,7 +11,7 @@ from pathlib import Path
 from willy.generator.base import ImageGenerator, build_prompt
 from willy.generator.preset import ConceptPreset
 from willy.images import sniff
-from willy.models import LookAnalysis
+from willy.models import DayWeather, LookAnalysis
 
 
 class NoopGenerator(ImageGenerator):
@@ -25,6 +25,7 @@ class NoopGenerator(ImageGenerator):
         analysis: LookAnalysis,
         preset: ConceptPreset,
         strength: float,
+        day: DayWeather | None = None,
     ) -> Path:
         # 확장자는 원본 바이트를 따른다. Task 7이 .png/.webp로 리태그한 파일이
         # 여기서 다시 .jpg로 둔갑하면 안 된다.
@@ -33,6 +34,6 @@ class NoopGenerator(ImageGenerator):
         shutil.copyfile(source_image, dest)
 
         prompt_path = self._out / f"{analysis.look_id}.prompt.txt"
-        prompt_path.write_text(build_prompt(analysis, preset), encoding="utf-8")
+        prompt_path.write_text(build_prompt(analysis, preset, day), encoding="utf-8")
 
         return dest

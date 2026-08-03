@@ -15,10 +15,9 @@ PRESET_PATH = Path(__file__).parents[1] / "presets" / "concept_v1.yaml"
 def look() -> LookAnalysis:
     return LookAnalysis(
         look_id="L1", source="musinsa_snap", gender=Gender.MEN,
-        sleeve="short", outer="shirt_jacket",
-        layers=2, fabric_weight="light", coverage="mid", temp_range=(17, 23),
+        temp_range=(17, 23),
         rain_ok=False, season="fall", style_tags=["미니멀", "워크웨어"],
-        palette=["charcoal", "ecru"], image_path=Path("/tmp/L1.jpg"),
+        image_path=Path("/tmp/L1.jpg"),
     )
 
 
@@ -43,8 +42,25 @@ def test_build_prompt_includes_look_attributes():
     prompt = build_prompt(look(), load_preset(PRESET_PATH))
 
     assert "미니멀" in prompt
-    assert "charcoal" in prompt
     assert "30대 초반" in prompt
+    # 착장 세부 묘사 대신 원본 사진을 레퍼런스로 가리킨다.
+    assert "원본 사진" in prompt
+
+
+def test_build_prompt_includes_weather_when_given():
+    from datetime import date
+
+    from willy.models import DayWeather
+
+    day = DayWeather(
+        date=date(2026, 8, 4), weekday_ko="화", temp_max=35, temp_min=27,
+        precip_prob=78, sky="대체로맑음", resolution="detailed",
+    )
+
+    prompt = build_prompt(look(), load_preset(PRESET_PATH), day)
+
+    assert "35/27℃" in prompt
+    assert "78" in prompt
 
 
 def test_build_prompt_omits_undecided_fields():
@@ -75,14 +91,13 @@ def test_noop_generator_copies_source_and_records_prompt(tmp_path: Path):
 
 
 def test_build_prompt_omits_empty_lists():
-    """분석기가 style_tags/palette를 빈 리스트로 줄 수 있다. 라벨만 남으면 안 된다."""
-    bare = replace(look(), style_tags=[], palette=[])
+    """분석기가 style_tags를 빈 리스트로 줄 수 있다. 라벨만 남으면 안 된다."""
+    bare = replace(look(), style_tags=[])
 
     prompt = build_prompt(bare, load_preset(PRESET_PATH))
 
-    assert "색상:" not in prompt
     assert "무드:" not in prompt
-    assert "소재감:" in prompt  # 나머지는 그대로 나온다
+    assert "착장:" in prompt  # 나머지는 그대로 나온다
 
 
 def test_noop_generator_preserves_source_format(tmp_path: Path):

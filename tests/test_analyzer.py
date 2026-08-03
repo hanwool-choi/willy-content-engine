@@ -1,12 +1,12 @@
 import base64
 import json
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
 
 from willy.analyzer import LookAnalyzer, derive_season
-from willy.models import Gender, RawLook
+from willy.models import DayWeather, Gender, RawLook
 
 
 @pytest.mark.parametrize(
@@ -26,15 +26,18 @@ def test_derive_season_is_deterministic(temp, month, expected):
 
 
 class FakeMessages:
-    def __init__(self, payload: str):
-        self._payload = payload
+    def __init__(self, payloads: list[str]):
+        self._payloads = payloads
+        self.calls = 0
         self.last_kwargs = None
 
     def create(self, **kwargs):
+        self.calls += 1
         self.last_kwargs = kwargs
+        payload = self._payloads[min(self.calls, len(self._payloads)) - 1]
 
         class Block:
-            text = self._payload
+            text = payload
 
         class Response:
             content = [Block()]
@@ -43,160 +46,143 @@ class FakeMessages:
 
 
 class FakeClient:
-    def __init__(self, payload: str):
-        self.messages = FakeMessages(payload)
+    def __init__(self, *payloads: str):
+        self.messages = FakeMessages(list(payloads))
 
 
 @pytest.fixture
-def image(tmp_path: Path) -> Path:
-    path = tmp_path / "look.jpg"
-    path.write_bytes(b"\xff\xd8\xff\xe0fake-jpeg")
-    return path
-
-
-def raw(image: Path) -> RawLook:
-    return RawLook(
-        look_id="L1",
-        source="musinsa_snap",
-        image_path=image,
-        capture_method="original_url",
-        collected_at=datetime(2026, 8, 3),
+def day() -> DayWeather:
+    return DayWeather(
+        date=date(2026, 8, 4),
+        weekday_ko="화",
+        temp_min=27,
+        temp_max=35,
+        precip_prob=78,
+        sky="대체로맑음",
+        resolution="detailed",
     )
 
 
-VALID = """{
-  "gender": "men", "sleeve": "short", "outer": null, "layers": 1,
-  "fabric_weight": "light", "coverage": "mid", "temp_range": [24, 30],
-  "rain_ok": false, "style_tags": ["미니멀"], "palette": ["ecru", "charcoal"]
-}"""
-
-
-def test_analyze_maps_fields(image: Path):
-    analyzer = LookAnalyzer(api_key="k", client=FakeClient(VALID))
-    result = analyzer.analyze(raw(image))
-
-    assert result.look_id == "L1"
-    assert result.gender is Gender.MEN
-    assert result.temp_range == (24, 30)
-    assert result.rain_ok is False
-    assert result.palette == ["ecru", "charcoal"]
-    assert result.image_path == image
-
-
-def test_analyze_carries_source_from_raw_look(image: Path):
-    """분석 결과의 출처는 모델이 아니라 수집 시점의 RawLook.source에서 온다.
-
-    이걸 놓치면 출처 배지, 소스별 집계, 아카이브 재사용 기록이 전부 깨진다.
-    """
-    analyzer = LookAnalyzer(api_key="k", client=FakeClient(VALID))
-
-    result = analyzer.analyze(raw(image))
-
-    assert result.source == "musinsa_snap"
-
-
-def test_analyze_derives_season_not_from_model(image: Path):
-    """모델이 계절을 말해줘도 무시하고 기온에서 파생한다.
-
-    아카이브 폴백이 season으로 필터하므로, 모델이 들쭉날쭉 답하면
-    룩 재사용이 조용히 깨진다.
-    """
-    lying = VALID.replace('"rain_ok": false', '"season": "winter", "rain_ok": false')
-    assert lying != VALID  # replace가 실제로 적용됐는지 확인
-    analyzer = LookAnalyzer(api_key="k", client=FakeClient(lying))
-
-    result = analyzer.analyze(raw(image))
-
-    # temp_range [24, 30] -> 중앙값 27 -> summer. 모델이 말한 winter는 버린다.
-    assert result.season == "summer"
-
-
-def test_analyze_strips_markdown_fence(image: Path):
-    """앞에 중괄호가 섞인 설명이 붙어도 펜스 안의 JSON만 정확히 집어낸다.
-
-    펜스 분기가 없으면 탐욕적인 fallback 정규식이 설명 속 중괄호부터
-    JSON 끝까지를 통째로 잡아 파싱에 실패한다.
-    """
-    noisy = (
-        "설명드리자면 {이건 JSON이 아닙니다} 아래가 결과입니다.\n"
-        "```json\n" + VALID + "\n```"
-    )
-    analyzer = LookAnalyzer(api_key="k", client=FakeClient(noisy))
-
-    assert analyzer.analyze(raw(image)).gender is Gender.MEN
-
-
-def test_analyze_sends_base64_image(image: Path):
-    client = FakeClient(VALID)
-    LookAnalyzer(api_key="k", client=client).analyze(raw(image))
-
-    content = client.messages.last_kwargs["messages"][0]["content"]
-    image_block = next(b for b in content if b["type"] == "image")
-    assert image_block["source"]["data"] == base64.standard_b64encode(
-        image.read_bytes()
-    ).decode()
-
-
-def test_analyze_raises_on_malformed_response(image: Path):
-    analyzer = LookAnalyzer(api_key="k", client=FakeClient("설명을 드리자면..."))
-
-    with pytest.raises(ValueError, match="분석 결과를 파싱"):
-        analyzer.analyze(raw(image))
-
-
-def test_analyze_rejects_inverted_temp_range(image: Path):
-    bad = VALID.replace('"temp_range": [24, 30]', '"temp_range": [30, 24]')
-    analyzer = LookAnalyzer(api_key="k", client=FakeClient(bad))
-
-    with pytest.raises(ValueError, match="temp_range"):
-        analyzer.analyze(raw(image))
-
-
-def test_analyze_rejects_temp_range_that_collapses_after_truncation(image: Path):
-    """[24.1, 24.9]는 정수 변환 후 (24, 24)가 된다. lo < hi가 깨지므로 거부한다."""
-    collapsing = VALID.replace('"temp_range": [24, 30]', '"temp_range": [24.1, 24.9]')
-    assert collapsing != VALID
-    analyzer = LookAnalyzer(api_key="k", client=FakeClient(collapsing))
-
-    with pytest.raises(ValueError, match="temp_range"):
-        analyzer.analyze(raw(image))
-
-
-def test_analyze_rejects_response_missing_required_key(image: Path):
-    """필수 키가 빠지면 KeyError가 아니라 ValueError여야 한다."""
-    data = json.loads(VALID)
-    del data["sleeve"]
-    analyzer = LookAnalyzer(api_key="k", client=FakeClient(json.dumps(data)))
-
-    with pytest.raises(ValueError, match="분석 결과를 파싱"):
-        analyzer.analyze(raw(image))
-
-
-def test_analyze_rejects_unknown_gender(image: Path):
-    bad = VALID.replace('"gender": "men"', '"gender": "male"')
-    assert bad != VALID
-    analyzer = LookAnalyzer(api_key="k", client=FakeClient(bad))
-
-    with pytest.raises(ValueError, match="분석 결과를 파싱"):
-        analyzer.analyze(raw(image))
-
-
-def test_analyze_declares_media_type_from_bytes(tmp_path: Path):
-    """PNG를 image/jpeg라고 선언하면 비전 API가 거부한다."""
-    png = tmp_path / "look.jpg"  # 확장자는 jpg지만 내용은 png
+@pytest.fixture
+def images(tmp_path: Path) -> list[Path]:
+    jpg = tmp_path / "look0.jpg"
+    jpg.write_bytes(b"\xff\xd8\xff\xe0fake-jpeg")
+    png = tmp_path / "look1.jpg"  # 확장자는 jpg지만 내용은 png
     png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"body")
+    return [jpg, png]
 
-    client = FakeClient(VALID)
-    LookAnalyzer(api_key="k", client=client).analyze(
+
+def raws(images: list[Path]) -> list[RawLook]:
+    return [
         RawLook(
-            look_id="L1",
-            source="manual",
-            image_path=png,
+            look_id=f"L{i}",
+            source="musinsa_snap",
+            image_path=path,
             capture_method="original_url",
             collected_at=datetime(2026, 8, 3),
         )
+        for i, path in enumerate(images)
+    ]
+
+
+def valid_batch(count: int = 2) -> str:
+    return json.dumps(
+        [
+            {
+                "gender": "men",
+                "temp_range": [24, 30],
+                "rain_ok": False,
+                "style_tags": ["미니멀"],
+            }
+            for _ in range(count)
+        ],
+        ensure_ascii=False,
     )
 
+
+def test_batch_maps_fields(images, day):
+    analyzer = LookAnalyzer(api_key="k", client=FakeClient(valid_batch()))
+
+    results = analyzer.analyze_batch(raws(images), day)
+
+    assert [r.look_id for r in results] == ["L0", "L1"]
+    assert results[0].gender is Gender.MEN
+    assert results[0].temp_range == (24, 30)
+    assert results[0].season == "summer"
+    assert results[0].source == "musinsa_snap"
+
+
+def test_batch_sends_images_as_ordered_blocks(images, day):
+    client = FakeClient(valid_batch())
+    LookAnalyzer(api_key="k", client=client).analyze_batch(raws(images), day)
+
+    assert client.messages.calls == 1
     content = client.messages.last_kwargs["messages"][0]["content"]
-    image_block = next(b for b in content if b["type"] == "image")
-    assert image_block["source"]["media_type"] == "image/png"
+    image_blocks = [b for b in content if b["type"] == "image"]
+    assert len(image_blocks) == 2
+    assert image_blocks[0]["source"]["media_type"] == "image/jpeg"
+    assert image_blocks[1]["source"]["media_type"] == "image/png"
+    assert image_blocks[0]["source"]["data"] == base64.standard_b64encode(
+        images[0].read_bytes()
+    ).decode()
+
+
+def test_batch_prompt_includes_weather(images, day):
+    client = FakeClient(valid_batch())
+    LookAnalyzer(api_key="k", client=client).analyze_batch(raws(images), day)
+
+    content = client.messages.last_kwargs["messages"][0]["content"]
+    prompt = next(b["text"] for b in content if b["type"] == "text")
+    assert "35" in prompt and "78" in prompt
+
+
+def test_batch_retries_length_mismatch_once(images, day):
+    client = FakeClient(valid_batch(1), valid_batch(2))
+    analyzer = LookAnalyzer(api_key="k", client=client)
+
+    assert len(analyzer.analyze_batch(raws(images), day)) == 2
+    assert client.messages.calls == 2
+
+
+def test_batch_fails_after_repeated_length_mismatch(images, day):
+    client = FakeClient(valid_batch(1))
+    analyzer = LookAnalyzer(api_key="k", client=client)
+
+    with pytest.raises(ValueError, match="분석 결과를 파싱"):
+        analyzer.analyze_batch(raws(images), day)
+
+    assert client.messages.calls == 2
+
+
+def test_batch_strips_markdown_fence(images, day):
+    noisy = "설명입니다.\n```json\n" + valid_batch() + "\n```"
+    analyzer = LookAnalyzer(api_key="k", client=FakeClient(noisy))
+
+    assert len(analyzer.analyze_batch(raws(images), day)) == 2
+
+
+def test_batch_empty_input_makes_no_call(day):
+    client = FakeClient(valid_batch())
+    analyzer = LookAnalyzer(api_key="k", client=client)
+
+    assert analyzer.analyze_batch([], day) == []
+    assert client.messages.calls == 0
+
+
+def test_batch_rejects_missing_required_key(images, day):
+    data = json.loads(valid_batch())
+    del data[0]["rain_ok"]
+    analyzer = LookAnalyzer(api_key="k", client=FakeClient(json.dumps(data)))
+
+    with pytest.raises(ValueError, match="분석 결과를 파싱"):
+        analyzer.analyze_batch(raws(images), day)
+
+
+def test_batch_rejects_temp_range_that_collapses_after_truncation(images, day):
+    """[24.1, 24.9]는 정수 절삭 후 (24, 24)로 붕괴한다. 거부한다."""
+    bad = valid_batch().replace("[24, 30]", "[24.1, 24.9]")
+    assert "[24.1, 24.9]" in bad
+    analyzer = LookAnalyzer(api_key="k", client=FakeClient(bad))
+
+    with pytest.raises(ValueError, match="temp_range"):
+        analyzer.analyze_batch(raws(images), day)

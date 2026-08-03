@@ -22,6 +22,14 @@ SEOUL_MID_TA_REG = "11B10101"
 SEOUL_LAT = 37.5665
 SEOUL_LON = 126.978
 
+# 소스별 수집량. 무신사가 주력이고(스트릿 톤 다양성), 유니클로 M/W는
+# 무신사가 한쪽 성별로 쏠렸을 때를 위한 성별 안전핀이다.
+SOURCE_QUOTAS = {
+    "musinsa_snap": 6,
+    "uniqlo_men": 2,
+    "uniqlo_women": 2,
+}
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -32,7 +40,6 @@ class Settings:
     picks_per_gender: int = 2
     # 성별당 이 수에 못 미치면 아카이브에서 유사 룩으로 채운다.
     min_pool_per_gender: int = 4
-    looks_per_source: int = 4
     output_root: Path = PROJECT_ROOT / "outputs"
     archive_db: Path = PROJECT_ROOT / "archive" / "looks.db"
     workspace: Path = PROJECT_ROOT / ".workspace"

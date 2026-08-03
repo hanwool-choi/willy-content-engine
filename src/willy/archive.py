@@ -14,17 +14,11 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS looks (
     look_id       TEXT PRIMARY KEY,
     gender        TEXT NOT NULL,
-    sleeve        TEXT NOT NULL,
-    outer         TEXT,
-    layers        INTEGER NOT NULL,
-    fabric_weight TEXT NOT NULL,
-    coverage      TEXT NOT NULL,
     temp_min      INTEGER NOT NULL,
     temp_max      INTEGER NOT NULL,
     rain_ok       INTEGER NOT NULL,
     season        TEXT NOT NULL,
     style_tags    TEXT NOT NULL,
-    palette       TEXT NOT NULL,
     image_path    TEXT,
     source        TEXT NOT NULL DEFAULT ''
 );
@@ -37,6 +31,10 @@ CREATE TABLE IF NOT EXISTS usages (
 CREATE INDEX IF NOT EXISTS idx_lookup ON looks (gender, season, rain_ok);
 """
 
+# 판정 필드 축소(2026-08) 이전 DB에 남아 있는 컬럼들. NOT NULL 제약이
+# 걸려 있어 그대로 두면 축소 필드 INSERT가 실패하므로 지운다.
+LEGACY_COLUMNS = ("sleeve", "outer", "layers", "fabric_weight", "coverage", "palette")
+
 
 class Archive:
     def __init__(self, db_path: Path):
@@ -47,42 +45,38 @@ class Archive:
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(SCHEMA)
-        self._migrate_add_source_column()
+        self._migrate()
         self._conn.commit()
 
-    def _migrate_add_source_column(self) -> None:
-        """이전 실행의 archive/looks.db에는 source 컬럼이 없을 수 있다.
+    def _migrate(self) -> None:
+        """이전 실행의 archive/looks.db를 현재 스키마로 보정한다.
 
         CREATE TABLE IF NOT EXISTS는 이미 존재하는 테이블을 건드리지 않으므로,
-        기존 DB를 여는 두 번째 주차부터 여기서 직접 보강해야 한다.
+        기존 DB를 여는 두 번째 실행부터 여기서 직접 맞춰야 한다.
         """
         columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(looks)")}
         if "source" not in columns:
             self._conn.execute(
                 "ALTER TABLE looks ADD COLUMN source TEXT NOT NULL DEFAULT ''"
             )
+        for legacy in LEGACY_COLUMNS:
+            if legacy in columns:
+                self._conn.execute(f"ALTER TABLE looks DROP COLUMN {legacy}")
 
     def save(self, look: LookAnalysis) -> None:
         self._conn.execute(
             """INSERT OR REPLACE INTO looks
-               (look_id, gender, sleeve, outer, layers, fabric_weight, coverage,
-                temp_min, temp_max, rain_ok, season, style_tags, palette, image_path,
-                source)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               (look_id, gender, temp_min, temp_max, rain_ok, season,
+                style_tags, image_path, source)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
             (
                 look.look_id,
                 look.gender.value,
-                look.sleeve,
-                look.outer,
-                look.layers,
-                look.fabric_weight,
-                look.coverage,
                 look.temp_range[0],
                 look.temp_range[1],
                 int(look.rain_ok),
                 look.season,
                 json.dumps(look.style_tags, ensure_ascii=False),
-                json.dumps(look.palette, ensure_ascii=False),
                 str(look.image_path) if look.image_path else None,
                 look.source,
             ),
@@ -191,15 +185,9 @@ class Archive:
             look_id=row["look_id"],
             source=row["source"],
             gender=Gender(row["gender"]),
-            sleeve=row["sleeve"],
-            outer=row["outer"],
-            layers=row["layers"],
-            fabric_weight=row["fabric_weight"],
-            coverage=row["coverage"],
             temp_range=(row["temp_min"], row["temp_max"]),
             rain_ok=bool(row["rain_ok"]),
             season=row["season"],
             style_tags=json.loads(row["style_tags"]),
-            palette=json.loads(row["palette"]),
             image_path=Path(row["image_path"]) if row["image_path"] else None,
         )

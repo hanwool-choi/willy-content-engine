@@ -9,235 +9,200 @@ from willy.models import DayWeather, Gender, LookAnalysis, WarningCode
 
 def look(look_id: str, temp_range, rain_ok=True, gender=Gender.MEN) -> LookAnalysis:
     return LookAnalysis(
-        look_id=look_id, source="musinsa_snap", gender=gender, sleeve="short",
-        outer=None, layers=1,
-        fabric_weight="light", coverage="mid", temp_range=temp_range,
-        rain_ok=rain_ok, season="summer", style_tags=[], palette=[],
+        look_id=look_id,
+        source="musinsa_snap",
+        gender=gender,
+        temp_range=temp_range,
+        rain_ok=rain_ok,
+        season="summer",
+        style_tags=[],
         image_path=Path(f"/tmp/{look_id}.jpg"),
     )
 
 
-def day(offset: int, tmax=28, tmin=22, pop=10, sky="맑음") -> DayWeather:
-    d = date(2026, 8, 3) + timedelta(days=offset)
+def day(offset: int = 0, tmax=28, tmin=22, pop=10, sky="맑음") -> DayWeather:
+    d = date(2026, 8, 4) + timedelta(days=offset)
     return DayWeather(
         date=d, weekday_ko="월화수목금토일"[d.weekday()], temp_max=tmax,
         temp_min=tmin, precip_prob=pop, sky=sky, resolution="detailed",
     )
 
 
-def full_week() -> list[DayWeather]:
-    return [day(i) for i in range(7)]
+class FakeArchive:
+    def __init__(self, substitutes: list[LookAnalysis] | None = None):
+        self._substitutes = list(substitutes or [])
+        self.calls: list[dict] = []
+
+    def find_substitute(self, **kwargs):
+        self.calls.append(kwargs)
+        for candidate in self._substitutes:
+            if candidate.gender == kwargs["gender"] and candidate.look_id not in (
+                kwargs.get("exclude_ids") or set()
+            ):
+                return candidate
+        return None
+
+
+# ── 비용 함수 ──────────────────────────────────────────────
 
 
 def test_cost_is_temperature_distance_when_in_range():
     # 대표기온 28*0.6 + 22*0.4 = 25.6, 룩 중앙값 25 -> 0.6
-    assert assignment_cost(look("a", (20, 30)), day(0)) == pytest.approx(0.6)
+    assert assignment_cost(look("a", (20, 30)), day()) == pytest.approx(0.6)
 
 
 def test_cost_adds_penalty_when_temperature_out_of_range():
     # 대표기온 25.6이 (5,10) 밖 -> 거리 18.1 + 5
-    assert assignment_cost(look("a", (5, 10)), day(0)) == pytest.approx(23.1)
+    assert assignment_cost(look("a", (5, 10)), day()) == pytest.approx(23.1)
 
 
 def test_cost_blocks_non_rain_look_on_rainy_day():
-    cost = assignment_cost(look("a", (20, 30), rain_ok=False), day(0, pop=60))
-    assert cost >= 999
+    assert assignment_cost(look("a", (20, 30), rain_ok=False), day(pop=60)) >= 999
 
 
 def test_cost_allows_rain_ok_look_on_rainy_day():
-    cost = assignment_cost(look("a", (20, 30), rain_ok=True), day(0, pop=60))
-    assert cost < 999
+    assert assignment_cost(look("a", (20, 30), rain_ok=True), day(pop=60)) < 999
 
 
-def test_assign_fills_all_fourteen_slots():
-    looks = [look(f"m{i}", (20, 30)) for i in range(7)]
-    looks += [look(f"w{i}", (20, 30), gender=Gender.WOMEN) for i in range(7)]
+# ── 정렬 픽 배정 ──────────────────────────────────────────
 
-    assignment, warnings = assign(looks, full_week())
 
-    assert len(assignment) == 14
+def two_per_gender():
+    return [
+        look("m1", (20, 30)),
+        look("m2", (22, 30)),
+        look("w1", (20, 30), gender=Gender.WOMEN),
+        look("w2", (22, 30), gender=Gender.WOMEN),
+    ]
+
+
+def test_assign_fills_all_slots_when_pool_fits():
+    assignment, warnings, caveats = assign(two_per_gender(), [day()])
+
+    assert len(assignment) == 4
     assert all(v is not None for v in assignment.values())
     assert warnings == []
+    assert caveats == {}
+
+
+def test_assign_prefers_lower_cost_look_for_first_pick():
+    # 대표기온 25.6. m-far 중앙값 21 (거리 4.6), m-near 중앙값 26 (거리 0.4)
+    looks = [look("m-far", (16, 26)), look("m-near", (22, 30))]
+
+    assignment, _, _ = assign(looks, [day()], picks_per_gender=2)
+
+    assert assignment[(day().date, Gender.MEN, 0)].look_id == "m-near"
+    assert assignment[(day().date, Gender.MEN, 1)].look_id == "m-far"
+
+
+def test_assign_breaks_cost_ties_by_look_id():
+    looks = [look("b", (20, 30)), look("a", (20, 30))]
+
+    assignment, _, _ = assign(looks, [day()], picks_per_gender=2)
+
+    assert assignment[(day().date, Gender.MEN, 0)].look_id == "a"
 
 
 def test_assign_never_reuses_the_same_look():
-    looks = [look(f"m{i}", (20, 30)) for i in range(7)]
-    looks += [look(f"w{i}", (20, 30), gender=Gender.WOMEN) for i in range(7)]
+    assignment, _, _ = assign(two_per_gender(), [day()])
 
-    assignment, _ = assign(looks, full_week())
     used = [v.look_id for v in assignment.values() if v]
-
     assert len(used) == len(set(used))
 
 
 def test_assign_warns_when_pool_too_small():
-    assignment, warnings = assign([look("only", (20, 30))], full_week())
+    _, warnings, _ = assign([look("only", (20, 30))], [day()])
 
-    codes = [w.code for w in warnings]
-    assert WarningCode.POOL_TOO_SMALL in codes
+    assert WarningCode.POOL_TOO_SMALL in [w.code for w in warnings]
 
 
-def test_assign_leaves_empty_slot_rather_than_forcing_bad_match():
-    """한파 주간에 여름룩만 있으면 억지로 배정하지 않는다."""
-    winter_week = [day(i, tmax=-2, tmin=-10) for i in range(7)]
-    looks = [look(f"m{i}", (24, 30)) for i in range(7)]
+# ── 조건부 추천 ────────────────────────────────────────────
 
-    assignment, warnings = assign(looks, winter_week)
 
-    # 남성 후보는 7개 다 있지만 전부 기온이 안 맞는다. WOMEN 풀이 비어서가 아니라
-    # MAX_ACCEPTABLE 가드 때문에 비어야 한다.
-    men_slots = [v for (_d, g, _p), v in assignment.items() if g is Gender.MEN]
-    assert len(men_slots) == 7
-    assert all(v is None for v in men_slots)
+def test_rainy_day_conditional_pick_carries_caveat():
+    """우천 부적합만 있는 날, 빈 칸 대신 차선 룩을 사유와 함께 채운다."""
+    rainy = day(pop=78)
+    looks = [look("m1", (20, 30), rain_ok=False), look("m2", (22, 30), rain_ok=False)]
+
+    assignment, warnings, caveats = assign(looks, [rainy], picks_per_gender=2)
+
+    slot0 = (rainy.date, Gender.MEN, 0)
+    assert assignment[slot0] is not None
+    assert "우천 부적합" in caveats[slot0]
+    assert "기온은 적합" in caveats[slot0]
+    assert WarningCode.CONDITIONAL_PICK in [w.code for w in warnings]
+
+
+def test_conditional_pick_prefers_lowest_cost_among_unfit():
+    rainy = day(pop=78)
+    # 둘 다 우천 부적합. m-near가 기온 거리가 더 가깝다.
+    looks = [look("m-far", (10, 16), rain_ok=False), look("m-near", (22, 30), rain_ok=False)]
+
+    assignment, _, caveats = assign(looks, [rainy], picks_per_gender=2)
+
+    assert assignment[(rainy.date, Gender.MEN, 0)].look_id == "m-near"
+    # 기온 범위 밖 룩의 사유에는 기온 문제가 담긴다.
+    assert "기온" in caveats[(rainy.date, Gender.MEN, 1)]
+
+
+def test_archive_substitute_beats_conditional_pick():
+    """진짜 적합한 아카이브 룩이 있으면 조건부 추천보다 우선한다."""
+    rainy = day(pop=78)
+    substitute = look("arch-rain", (22, 30), rain_ok=True)
+    archive = FakeArchive([substitute])
+    looks = [look("m1", (22, 30), rain_ok=False)]
+
+    assignment, warnings, caveats = assign(
+        looks, [rainy], archive=archive, picks_per_gender=1
+    )
+
+    slot = (rainy.date, Gender.MEN, 0)
+    assert assignment[slot].look_id == "arch-rain"
+    assert slot not in caveats
+    assert WarningCode.RAIN_SUBSTITUTE in [w.code for w in warnings]
+
+
+def test_conditional_pick_used_when_archive_has_nothing():
+    rainy = day(pop=78)
+    archive = FakeArchive([])
+    looks = [look("m1", (22, 30), rain_ok=False)]
+
+    assignment, _, caveats = assign(
+        looks, [rainy], archive=archive, picks_per_gender=1
+    )
+
+    slot = (rainy.date, Gender.MEN, 0)
+    assert assignment[slot].look_id == "m1"
+    assert slot in caveats
+
+
+def test_empty_slot_when_no_pool_at_all():
+    assignment, warnings, caveats = assign([], [day()], picks_per_gender=1)
+
+    assert all(v is None for v in assignment.values())
     assert WarningCode.EMPTY_SLOT in [w.code for w in warnings]
+    assert caveats == {}
 
 
-def test_assign_prefers_globally_optimal_over_greedy():
-    """앞 요일이 비에도 쓸 수 있는 룩을 선점하면, 비 오는 뒤 요일이 빈다.
+def test_conditional_pick_is_not_duplicated_across_slots():
+    rainy = day(pop=78)
+    looks = [look("m1", (22, 30), rain_ok=False)]
 
-    그리디는 월요일에 rainproof(비용 0)를 가져가고 화요일에 fairweather만
-    남는데 비용 1001이라 배정 불가 -> 빈칸. 헝가리안은 전체를 보고
-    월요일에 fairweather(2), 화요일에 rainproof(0)를 놓아 둘 다 채운다.
-    """
-    week = [day(0, tmax=25, tmin=25), day(1, tmax=25, tmin=25, pop=80, sky="비")]
-    looks = [
-        look("rainproof", (20, 30), rain_ok=True),      # 중앙값 25
-        look("fairweather", (18, 28), rain_ok=False),   # 중앙값 23
-    ]
+    assignment, _, _ = assign(looks, [rainy], picks_per_gender=2)
 
-    assignment, _ = assign(looks, week)
-
-    assert assignment[(week[0].date, Gender.MEN, 0)].look_id == "fairweather"
-    assert assignment[(week[1].date, Gender.MEN, 0)].look_id == "rainproof"
+    slot0 = assignment[(rainy.date, Gender.MEN, 0)]
+    slot1 = assignment[(rainy.date, Gender.MEN, 1)]
+    assert slot0 is not None and slot0.look_id == "m1"
+    assert slot1 is None  # 같은 룩을 두 칸에 넣지 않는다
 
 
-def test_assign_uses_archive_substitute_on_rainy_day(tmp_path: Path):
-    from willy.archive import Archive
+def test_out_of_range_fit_uses_conditional_with_temp_caveat():
+    """맑은 날이지만 기온 범위 밖뿐인 경우도 조건부 추천으로 채운다."""
+    hot = day(tmax=36, tmin=28)  # 대표기온 32.8
+    looks = [look("m1", (17, 24))]  # 거리 12.3 + 5 = 17.3 > MAX_ACCEPTABLE
 
-    archive = Archive(tmp_path / "a.db")
-    archive.save(look("rain_backup", (22, 28), rain_ok=True))
+    assignment, _, caveats = assign(looks, [hot], picks_per_gender=1)
 
-    week = [day(0, pop=80, sky="비")]
-    looks = [look("dry_only", (22, 28), rain_ok=False)]
-
-    assignment, warnings = assign(looks, week, archive=archive)
-
-    assert assignment[(week[0].date, Gender.MEN, 0)].look_id == "rain_backup"
-    # 우천 대체는 RAIN_SUBSTITUTE 하나만 남긴다. 한 사건에 경고 하나.
-    codes = [w.code for w in warnings]
-    assert WarningCode.RAIN_SUBSTITUTE in codes
-    assert codes.count(WarningCode.RAIN_SUBSTITUTE) == 1
-
-
-def test_assign_uses_archive_fallback_on_dry_day(tmp_path: Path):
-    """비가 안 오는 날 폴백은 ARCHIVE_FALLBACK으로 구분한다."""
-    from willy.archive import Archive
-
-    archive = Archive(tmp_path / "a.db")
-    archive.save(look("backup", (24, 30), rain_ok=False))
-
-    week = [day(0, tmax=28, tmin=22)]
-    looks = [look("way_off", (-10, -5))]  # 배정 불가 수준
-
-    assignment, warnings = assign(looks, week, archive=archive)
-
-    assert assignment[(week[0].date, Gender.MEN, 0)].look_id == "backup"
-    assert WarningCode.ARCHIVE_FALLBACK in [w.code for w in warnings]
-
-
-def test_assign_never_reuses_the_same_archive_look_twice(tmp_path: Path):
-    """두 날이 모두 폴백으로 떨어져도 같은 룩이 두 번 나오면 안 된다."""
-    from willy.archive import Archive
-
-    archive = Archive(tmp_path / "a.db")
-    archive.save(look("backup1", (24, 30)))
-    archive.save(look("backup2", (24, 30)))
-
-    week = [day(0), day(1)]
-    looks = [look("way_off1", (-10, -5)), look("way_off2", (-10, -5))]
-
-    assignment, _ = assign(looks, week, archive=archive)
-
-    picked = [assignment[(d.date, Gender.MEN, 0)].look_id for d in week]
-    assert len(set(picked)) == 2, f"같은 룩이 두 번 배정됨: {picked}"
-
-
-def test_assign_fallback_does_not_steal_a_later_days_pool_look(tmp_path: Path):
-    """앞 요일의 아카이브 폴백이 뒤 요일에 예약된 룩을 가져가면 안 된다.
-
-    gather()가 오늘 수집분도 아카이브에 넣기 때문에 실제로 도달하는 경로다.
-    """
-    from willy.archive import Archive
-
-    archive = Archive(tmp_path / "a.db")
-    good = look("good", (24, 30))
-    bad = look("bad", (-10, -5))
-    for entry in (good, bad):
-        archive.save(entry)
-
-    week = [day(0), day(1, tmax=27, tmin=27)]
-
-    assignment, _ = assign([good, bad], week, archive=archive)
-
-    ids = [
-        assignment[(d.date, Gender.MEN, 0)].look_id
-        for d in week
-        if assignment[(d.date, Gender.MEN, 0)] is not None
-    ]
-    assert len(ids) == len(set(ids)), f"같은 룩이 두 번 배정됨: {ids}"
-    assert assignment[(week[1].date, Gender.MEN, 0)].look_id == "good"
-
-
-def test_assign_dry_day_fallback_accepts_rain_capable_look(tmp_path: Path):
-    """맑은 날 폴백은 우천 가능 룩도 받는다."""
-    from willy.archive import Archive
-
-    archive = Archive(tmp_path / "a.db")
-    archive.save(look("rain_capable", (24, 30), rain_ok=True))
-
-    week = [day(0)]
-    looks = [look("way_off", (-10, -5))]
-
-    assignment, warnings = assign(looks, week, archive=archive)
-
-    assert assignment[(week[0].date, Gender.MEN, 0)].look_id == "rain_capable"
-    assert WarningCode.ARCHIVE_FALLBACK in [w.code for w in warnings]
-
-
-def test_assign_produces_two_picks_per_gender_for_one_day_horizon():
-    """내일 뭐입지?의 새 모양: 하루 × 성별 2 × 픽 2 = 4칸."""
-    looks = [look(f"m{i}", (20, 30)) for i in range(4)]
-    looks += [look(f"w{i}", (20, 30), gender=Gender.WOMEN) for i in range(4)]
-    one_day = [day(0)]
-
-    assignment, warnings = assign(looks, one_day, picks_per_gender=2)
-
-    assert len(assignment) == 4  # 1일 * 성별 2 * 픽 2
-    assert all(v is not None for v in assignment.values())
-    assert warnings == []
-
-
-def test_assign_gives_distinct_looks_to_the_two_picks_of_one_gender():
-    """같은 요일, 같은 성별의 두 픽은 서로 다른 룩이어야 한다."""
-    looks = [look(f"m{i}", (20, 30)) for i in range(4)]
-    one_day = [day(0)]
-
-    assignment, _ = assign(looks, one_day, picks_per_gender=2)
-
-    first = assignment[(one_day[0].date, Gender.MEN, 0)]
-    second = assignment[(one_day[0].date, Gender.MEN, 1)]
-    assert first is not None
-    assert second is not None
-    assert first.look_id != second.look_id
-
-
-def test_assign_pool_too_small_scales_with_picks_per_gender():
-    """POOL_TOO_SMALL 기준은 이제 요일수 * 2 * picks_per_gender다."""
-    looks = [look("only", (20, 30))]
-    one_day = [day(0)]
-
-    # 1일 * 성별 2 * 픽 2 = 4개가 필요한데 1개뿐이다.
-    assignment, warnings = assign(looks, one_day, picks_per_gender=2)
-
-    codes = [w.code for w in warnings]
-    assert WarningCode.POOL_TOO_SMALL in codes
+    slot = (hot.date, Gender.MEN, 0)
+    assert assignment[slot].look_id == "m1"
+    assert "기온" in caveats[slot]

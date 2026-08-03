@@ -16,8 +16,10 @@ from willy.analyzer import derive_season
 from willy.archive import Archive
 from willy.assigner import assign
 from willy.collector.sources import SOURCE_SPECS
+from willy.config import SOURCE_QUOTAS
 from willy.models import (
     Assignment,
+    Caveats,
     DayWeather,
     Gender,
     LookAnalysis,
@@ -35,6 +37,7 @@ class PipelineState:
     looks: list[LookAnalysis]
     assignment: Assignment
     warnings: list[Warning]
+    caveats: Caveats = field(default_factory=dict)
     generated: dict[tuple[date, Gender, int], Path] = field(default_factory=dict)
 
 
@@ -48,7 +51,7 @@ class Pipeline:
         archive: Archive,
         preset,
         output_root: Path,
-        looks_per_source: int = 4,
+        source_quotas: dict[str, int] | None = None,
         horizon_days: int = 1,
         picks_per_gender: int = 2,
         min_pool_per_gender: int = 4,
@@ -60,15 +63,17 @@ class Pipeline:
         self.archive = archive
         self.preset = preset
         self.output_root = output_root
-        self.looks_per_source = looks_per_source
+        self.source_quotas = source_quotas or dict(SOURCE_QUOTAS)
         self.horizon_days = horizon_days
         self.picks_per_gender = picks_per_gender
         self.min_pool_per_gender = min_pool_per_gender
 
     def gather(self, base_date: date) -> PipelineState:
-        """수집 -> 분석 -> 날씨 -> 배정. 1차 컨펌 대상.
+        """수집 -> 배치 분석 -> 배정. 1차 컨펌 대상.
 
         계획 대상은 base_date 당일이 아니라 '내일', 즉 base_date + 1일부터다.
+        분석은 전 수집분을 요청 1번에 넣는 배치라 부분 성공이 없다 —
+        실패하면 조용히 이어가지 않고 오류로 드러낸다.
         """
         plan_start = base_date + timedelta(days=1)
         week = self.weather_client.get_week_forecast(
@@ -76,23 +81,16 @@ class Pipeline:
         )
 
         raw_looks = self.collector.collect(
-            list(SOURCE_SPECS.values()), limit_per_source=self.looks_per_source
+            list(SOURCE_SPECS.values()), quotas=self.source_quotas
         )
 
-        looks: list[LookAnalysis] = []
-        for raw in raw_looks:
-            try:
-                analysis = self.analyzer.analyze(raw)
-            except Exception:
-                # 한 장의 분석 실패가 전체를 막지 않는다.
-                log.exception("룩 분석 실패: %s", raw.look_id)
-                continue
-            looks.append(analysis)
+        looks = self.analyzer.analyze_batch(raw_looks, week[0])
+        for analysis in looks:
             self.archive.save(analysis)
 
         looks, topup_warnings = self._top_up_from_archive(looks, week[0])
 
-        assignment, warnings = assign(
+        assignment, warnings, caveats = assign(
             looks, week, archive=self.archive, picks_per_gender=self.picks_per_gender
         )
         return PipelineState(
@@ -100,6 +98,7 @@ class Pipeline:
             looks=looks,
             assignment=assignment,
             warnings=topup_warnings + warnings,
+            caveats=caveats,
         )
 
     def _top_up_from_archive(
@@ -167,7 +166,8 @@ class Pipeline:
                 continue
             try:
                 generated[(slot_date, gender, pick)] = self.generator.generate(
-                    analysis.image_path, analysis, self.preset, self.preset.strength
+                    analysis.image_path, analysis, self.preset, self.preset.strength,
+                    day=state.week[0],
                 )
             except Exception:
                 log.exception("이미지 생성 실패: %s", analysis.look_id)

@@ -46,8 +46,12 @@ class Collector:
         self._download = downloader or _default_downloader
 
     def collect(
-        self, sources: list[SourceSpec], limit_per_source: int = 20
+        self,
+        sources: list[SourceSpec],
+        limit_per_source: int = 20,
+        quotas: dict[str, int] | None = None,
     ) -> list[RawLook]:
+        """quotas가 있으면 소스별 수집량이 limit_per_source보다 우선한다."""
         looks: list[RawLook] = []
 
         # 같은 사진이 한 목록에 두 번 실리거나 소스끼리 겹치는 일이 실제로
@@ -59,9 +63,10 @@ class Collector:
         # 브라우저가 그대로 남기 때문이다.
         with self._page_factory() as page:
             for spec in sources:
+                limit = (quotas or {}).get(spec.name, limit_per_source)
                 try:
                     looks.extend(
-                        self._collect_one(page, spec, limit_per_source, seen)
+                        self._collect_one(page, spec, limit, seen)
                     )
                 except Exception:
                     # 한 소스 실패가 전체를 무너뜨리지 않는다.

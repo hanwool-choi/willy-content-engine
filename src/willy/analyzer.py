@@ -1,4 +1,8 @@
-"""룩 이미지 -> 구조화 분석. 기온 배정과 이미지 재생성에 모두 쓰인다."""
+"""룩 이미지 -> 구조화 분석. 기온 배정과 아카이브 폴백에 쓰인다.
+
+전 수집분을 요청 1번에 넣어 일괄 분석한다. 사진 N장을 N번 부르던
+구조는 무료 티어 분당 한도에 걸려 5~10분씩 걸렸다.
+"""
 from __future__ import annotations
 
 import base64
@@ -10,7 +14,7 @@ import httpx
 from anthropic import Anthropic
 
 from willy.images import sniff
-from willy.models import Gender, LookAnalysis, RawLook
+from willy.models import DayWeather, Gender, LookAnalysis, RawLook
 
 MODEL = "claude-sonnet-5"
 # 고정 버전은 신규 사용자에게 제공 종료될 수 있다 (2.5-flash가 실제로 그랬다).
@@ -18,32 +22,22 @@ MODEL = "claude-sonnet-5"
 GEMINI_MODEL = "gemini-flash-latest"
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
-REQUIRED_KEYS = (
-    "gender",
-    "sleeve",
-    "layers",
-    "fabric_weight",
-    "coverage",
-    "temp_range",
-    "rain_ok",
-)
+REQUIRED_KEYS = ("gender", "temp_range", "rain_ok")
 
-ANALYSIS_PROMPT = """이 사진의 착장을 분석해 JSON만 출력해. 설명 문장은 쓰지 마.
 
-{
+def batch_prompt(count: int, day: DayWeather) -> str:
+    return f"""사진 {count}장의 착장을 각각 분석해 JSON 배열만 출력해. 설명 문장은 쓰지 마.
+배열 길이는 정확히 {count}이어야 하고, 순서는 입력 사진 순서와 같아야 한다.
+
+각 원소:
+{{
   "gender": "men" 또는 "women",
-  "sleeve": "sleeveless" | "short" | "long",
-  "outer": 아우터 종류 문자열 또는 null,
-  "layers": 상체에 겹쳐 입은 옷의 개수 (정수),
-  "fabric_weight": "light" | "mid" | "heavy",
-  "coverage": "low" | "mid" | "high",
   "temp_range": [최저, 최고],
   "rain_ok": true 또는 false,
-  "style_tags": 한국어 스타일 키워드 2~4개,
-  "palette": 주요 색상 영문 2~4개
-}
+  "style_tags": 한국어 스타일 키워드 2~4개
+}}
 
-temp_range 판단 기준:
+temp_range 판단 기준 (이 착장이 적합한 기온 구간, 정수 ℃):
 - 반팔 단독, 얇은 소재 -> 24~32
 - 얇은 긴팔 또는 반팔+얇은 겉옷 -> 17~24
 - 두꺼운 긴팔, 자켓 -> 10~18
@@ -52,7 +46,11 @@ temp_range 판단 기준:
 
 rain_ok 판단 기준: 우천에 입을 수 있으면 true.
 아우터가 없거나, 스웨이드·린넨처럼 물에 약한 소재이거나,
-하의가 바닥에 끌리는 기장이면 false."""
+하의가 바닥에 끌리는 기장이면 false.
+
+참고로 이 룩들이 입혀질 내일 서울 날씨는 {day.sky}, 최고 {day.temp_max}℃ /
+최저 {day.temp_min}℃, 강수확률 {day.precip_prob}%다. 판정 자체는 사진의
+착장 기준으로 하되, 애매한 경계 판단은 이 날씨를 참고해라."""
 
 
 def derive_season(temp_median: float, collected_month: int) -> str:
@@ -67,19 +65,22 @@ def derive_season(temp_median: float, collected_month: int) -> str:
     return "winter"
 
 
-def _extract_json(text: str) -> dict:
-    """마크다운 펜스나 앞뒤 잡음이 섞여도 JSON 본문을 건져낸다."""
-    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
+def _extract_json_array(text: str) -> list:
+    """마크다운 펜스나 앞뒤 잡음이 섞여도 JSON 배열 본문을 건져낸다."""
+    fenced = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", text, re.S)
     candidate = fenced.group(1) if fenced else None
     if candidate is None:
-        braced = re.search(r"\{.*\}", text, re.S)
-        candidate = braced.group(0) if braced else None
+        bracketed = re.search(r"\[.*\]", text, re.S)
+        candidate = bracketed.group(0) if bracketed else None
     if candidate is None:
         raise ValueError(f"분석 결과를 파싱할 수 없습니다: {text[:120]}")
     try:
-        return json.loads(candidate)
+        parsed = json.loads(candidate)
     except json.JSONDecodeError as exc:
         raise ValueError(f"분석 결과를 파싱할 수 없습니다: {exc}") from exc
+    if not isinstance(parsed, list):
+        raise ValueError("분석 결과를 파싱할 수 없습니다: 배열이 아닙니다")
+    return parsed
 
 
 def build_analysis(raw_look: RawLook, data: dict) -> LookAnalysis:
@@ -112,55 +113,29 @@ def build_analysis(raw_look: RawLook, data: dict) -> LookAnalysis:
         look_id=raw_look.look_id,
         source=raw_look.source,
         gender=gender,
-        sleeve=data["sleeve"],
-        outer=data.get("outer"),
-        layers=int(data["layers"]),
-        fabric_weight=data["fabric_weight"],
-        coverage=data["coverage"],
         temp_range=(lo, hi),
         rain_ok=bool(data["rain_ok"]),
         season=derive_season(median, raw_look.collected_at.month),
         style_tags=list(data.get("style_tags", [])),
-        palette=list(data.get("palette", [])),
         image_path=raw_look.image_path,
     )
+
+
+def parse_batch(text: str, raw_looks: list[RawLook]) -> list[LookAnalysis]:
+    """배열 응답을 룩 순서대로 검증·매핑한다. 길이가 어긋나면 거부한다."""
+    entries = _extract_json_array(text)
+    if len(entries) != len(raw_looks):
+        raise ValueError(
+            f"분석 결과를 파싱할 수 없습니다: "
+            f"사진 {len(raw_looks)}장에 응답 {len(entries)}개"
+        )
+    return [build_analysis(raw, entry) for raw, entry in zip(raw_looks, entries)]
 
 
 def _encode_image(raw_look: RawLook) -> tuple[str, str]:
     media_type, _suffix = sniff(raw_look.image_path)
     encoded = base64.standard_b64encode(raw_look.image_path.read_bytes()).decode()
     return media_type, encoded
-
-
-class LookAnalyzer:
-    def __init__(self, api_key: str, client=None):
-        self._client = client or Anthropic(api_key=api_key)
-
-    def analyze(self, raw_look: RawLook) -> LookAnalysis:
-        media_type, encoded = _encode_image(raw_look)
-
-        response = self._client.messages.create(
-            model=MODEL,
-            max_tokens=1024,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": media_type,
-                                "data": encoded,
-                            },
-                        },
-                        {"type": "text", "text": ANALYSIS_PROMPT},
-                    ],
-                }
-            ],
-        )
-
-        return build_analysis(raw_look, _extract_json(response.content[0].text))
 
 
 def _retry_delay_seconds(response) -> float | None:
@@ -183,8 +158,49 @@ def _retry_delay_seconds(response) -> float | None:
     return None
 
 
+class LookAnalyzer:
+    """Claude 비전 배치 분석기."""
+
+    def __init__(self, api_key: str, client=None):
+        self._client = client or Anthropic(api_key=api_key)
+
+    def analyze_batch(
+        self, raw_looks: list[RawLook], day: DayWeather
+    ) -> list[LookAnalysis]:
+        if not raw_looks:
+            return []
+
+        content = []
+        for raw in raw_looks:
+            media_type, encoded = _encode_image(raw)
+            content.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": encoded,
+                    },
+                }
+            )
+        content.append({"type": "text", "text": batch_prompt(len(raw_looks), day)})
+
+        last_error: ValueError | None = None
+        for _attempt in range(2):  # 길이 불일치·파싱 오류는 1회만 다시 물어본다
+            response = self._client.messages.create(
+                model=MODEL,
+                max_tokens=4096,
+                messages=[{"role": "user", "content": content}],
+            )
+            try:
+                return parse_batch(response.content[0].text, raw_looks)
+            except ValueError as exc:
+                last_error = exc
+        raise last_error
+
+
 class GeminiAnalyzer:
-    """Gemini API 룩 분석기. 무료 티어로도 하루치(비전 12회)는 넉넉하다.
+    """Gemini API 배치 분석기. 무료 티어로도 하루치(요청 1회)는 넉넉하다.
 
     별도 SDK 없이 REST를 직접 부른다. 키는 로그·프록시에 남는 URL 쿼리가
     아니라 헤더로만 보낸다.
@@ -195,28 +211,32 @@ class GeminiAnalyzer:
 
     def __init__(self, api_key: str, http=None, sleep=None):
         self._api_key = api_key
-        self._http = http or httpx.Client(timeout=60)
+        self._http = http or httpx.Client(timeout=120)
         self._sleep = sleep or time.sleep
 
-    def analyze(self, raw_look: RawLook) -> LookAnalysis:
-        media_type, encoded = _encode_image(raw_look)
+    def analyze_batch(
+        self, raw_looks: list[RawLook], day: DayWeather
+    ) -> list[LookAnalysis]:
+        if not raw_looks:
+            return []
 
-        payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {
-                            "inline_data": {
-                                "mime_type": media_type,
-                                "data": encoded,
-                            }
-                        },
-                        {"text": ANALYSIS_PROMPT},
-                    ]
-                }
-            ]
-        }
+        parts = []
+        for raw in raw_looks:
+            media_type, encoded = _encode_image(raw)
+            parts.append({"inline_data": {"mime_type": media_type, "data": encoded}})
+        parts.append({"text": batch_prompt(len(raw_looks), day)})
+        payload = {"contents": [{"parts": parts}]}
 
+        last_error: ValueError | None = None
+        for _attempt in range(2):  # 길이 불일치·파싱 오류는 1회만 다시 물어본다
+            text = self._request(payload)
+            try:
+                return parse_batch(text, raw_looks)
+            except ValueError as exc:
+                last_error = exc
+        raise last_error
+
+    def _request(self, payload: dict) -> str:
         for _attempt in range(self.MAX_RATE_LIMIT_RETRIES + 1):
             last_try = _attempt == self.MAX_RATE_LIMIT_RETRIES
             try:
@@ -249,10 +269,8 @@ class GeminiAnalyzer:
         body = response.json()
         try:
             parts = body["candidates"][0]["content"]["parts"]
-            text = next(part["text"] for part in parts if "text" in part)
+            return next(part["text"] for part in parts if "text" in part)
         except (KeyError, IndexError, StopIteration) as exc:
             raise ValueError(
                 "분석 결과를 파싱할 수 없습니다: 응답에 텍스트가 없습니다"
             ) from exc
-
-        return build_analysis(raw_look, _extract_json(text))

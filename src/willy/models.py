@@ -21,6 +21,7 @@ class WarningCode(str, Enum):
     ARCHIVE_FALLBACK = "ARCHIVE_FALLBACK"
     RAIN_SUBSTITUTE = "RAIN_SUBSTITUTE"
     POOL_TOO_SMALL = "POOL_TOO_SMALL"
+    CONDITIONAL_PICK = "CONDITIONAL_PICK"
 
 
 def temp_repr(temp_max: int, temp_min: int) -> float:
@@ -55,19 +56,16 @@ class RawLook:
 
 @dataclass
 class LookAnalysis:
+    """비전 분석 결과. 배정(temp_range·rain_ok)과 아카이브 폴백에 필요한
+    최소 필드만 담는다. 착장 세부 묘사는 원본 사진이 대신한다."""
+
     look_id: str
     source: str  # "musinsa_snap" | "uniqlo_women" | "uniqlo_men" | "manual"
     gender: Gender
-    sleeve: str  # "sleeveless" | "short" | "long"
-    outer: str | None
-    layers: int
-    fabric_weight: str  # "light" | "mid" | "heavy"
-    coverage: str  # "low" | "mid" | "high"
     temp_range: tuple[int, int]
     rain_ok: bool
     season: str  # "spring" | "summer" | "fall" | "winter"
     style_tags: list[str]
-    palette: list[str]
     image_path: Path | None = None
 
     @property
@@ -111,5 +109,8 @@ class Warning:
     message: str
 
 
-# (date, Gender, pick index 0..picks_per_gender-1) -> LookAnalysis | None
-Assignment = dict[tuple[date, Gender, int], LookAnalysis | None]
+# (date, Gender, pick index 0..picks_per_gender-1)
+SlotKey = tuple[date, Gender, int]
+Assignment = dict[SlotKey, LookAnalysis | None]
+# 조건부 추천 슬롯의 사유. 예: "우천 부적합 — 기온은 적합"
+Caveats = dict[SlotKey, str]

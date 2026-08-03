@@ -135,7 +135,7 @@ class DemoCollector:
     def __init__(self, files: list[Path]):
         self._files = files
 
-    def collect(self, sources, limit_per_source: int) -> list[RawLook]:
+    def collect(self, sources, limit_per_source: int = 20, quotas=None) -> list[RawLook]:
         return [
             RawLook(
                 look_id=f"look{index:02d}",
@@ -157,7 +157,7 @@ class DemoCollector:
 
 
 class DemoAnalyzer:
-    """분석기 자리. 실제로는 Claude 비전이 착장을 읽는다.
+    """분석기 자리. 실제로는 비전 모델이 배치 1콜로 착장을 읽는다.
 
     성별은 소스 URL에서 유추한다. 무신사 스냅은 남녀가 섞여 있어 번갈아
     배정하는데, 사진과 라벨이 어긋날 수 있다 — 데모에만 있는 한계다.
@@ -166,7 +166,10 @@ class DemoAnalyzer:
     def __init__(self):
         self._musinsa_turn = 0
 
-    def analyze(self, raw_look: RawLook) -> LookAnalysis:
+    def analyze_batch(self, raw_looks, day) -> list[LookAnalysis]:
+        return [self._analyze_one(raw) for raw in raw_looks]
+
+    def _analyze_one(self, raw_look: RawLook) -> LookAnalysis:
         index = int(raw_look.look_id.removeprefix("look"))
         temp_range, rain_ok, tags = PROFILES[index % len(PROFILES)]
 
@@ -181,16 +184,10 @@ class DemoAnalyzer:
         return LookAnalysis(
             look_id=raw_look.look_id,
             gender=gender,
-            sleeve="short",
-            outer=None,
-            layers=1,
-            fabric_weight="light",
-            coverage="mid",
             temp_range=temp_range,
             rain_ok=rain_ok,
             season="summer",
             style_tags=tags,
-            palette=["ecru", "charcoal"],
             image_path=raw_look.image_path,
             source=raw_look.source,
         )
@@ -210,7 +207,6 @@ def build_pipeline(files: list[Path]):
             output_root=CACHE / "outputs",
             horizon_days=settings.horizon_days,
             picks_per_gender=settings.picks_per_gender,
-            looks_per_source=settings.looks_per_source,
         )
 
     return factory

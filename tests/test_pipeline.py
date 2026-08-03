@@ -8,6 +8,9 @@ from willy.pipeline import Pipeline
 
 
 class FakeWeather:
+    def __init__(self, precip_prob: int = 10):
+        self.precip_prob = precip_prob
+
     def get_week_forecast(self, base_date: date, days: int = 7) -> list[DayWeather]:
         out = []
         for i in range(days):
@@ -15,7 +18,8 @@ class FakeWeather:
             out.append(
                 DayWeather(
                     date=d, weekday_ko="월화수목금토일"[d.weekday()], temp_max=29,
-                    temp_min=24, precip_prob=10, sky="맑음", resolution="detailed",
+                    temp_min=24, precip_prob=self.precip_prob, sky="맑음",
+                    resolution="detailed",
                 )
             )
         return out
@@ -26,8 +30,10 @@ class FakeCollector:
         self.workspace = workspace
         workspace.mkdir(parents=True, exist_ok=True)
         self.count = count
+        self.last_quotas = None
 
-    def collect(self, sources, limit_per_source):
+    def collect(self, sources, limit_per_source=20, quotas=None):
+        self.last_quotas = quotas
         looks = []
         for i in range(self.count):
             path = self.workspace / f"raw{i}.jpg"
@@ -42,16 +48,32 @@ class FakeCollector:
 
 
 class FakeAnalyzer:
-    def analyze(self, raw_look: RawLook) -> LookAnalysis:
-        index = int(raw_look.look_id[1:])
-        return LookAnalysis(
-            look_id=raw_look.look_id,
-            source=raw_look.source,
-            gender=Gender.MEN if index % 2 == 0 else Gender.WOMEN,
-            sleeve="short", outer=None, layers=1, fabric_weight="light",
-            coverage="mid", temp_range=(24, 30), rain_ok=True, season="summer",
-            style_tags=["미니멀"], palette=["ecru"], image_path=raw_look.image_path,
-        )
+    def __init__(self, rain_ok: bool = True):
+        self.rain_ok = rain_ok
+        self.last_day = None
+        self.calls = 0
+
+    def analyze_batch(
+        self, raw_looks: list[RawLook], day: DayWeather
+    ) -> list[LookAnalysis]:
+        self.calls += 1
+        self.last_day = day
+        out = []
+        for raw in raw_looks:
+            index = int(raw.look_id[1:])
+            out.append(
+                LookAnalysis(
+                    look_id=raw.look_id,
+                    source=raw.source,
+                    gender=Gender.MEN if index % 2 == 0 else Gender.WOMEN,
+                    temp_range=(24, 30),
+                    rain_ok=self.rain_ok,
+                    season="summer",
+                    style_tags=["미니멀"],
+                    image_path=raw.image_path,
+                )
+            )
+        return out
 
 
 class FakeGenerator:
@@ -60,20 +82,19 @@ class FakeGenerator:
         out.mkdir(parents=True, exist_ok=True)
         self.calls = 0
 
-    def generate(self, source_image, analysis, preset, strength):
+    def generate(self, source_image, analysis, preset, strength, day=None):
         self.calls += 1
         path = self.out / f"{analysis.look_id}.png"
         path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"gen")  # 완전한 PNG 매직바이트
         return path
 
 
-@pytest.fixture
-def pipeline(tmp_path: Path) -> Pipeline:
+def make_pipeline(tmp_path: Path, **overrides) -> Pipeline:
     from willy.archive import Archive
     from willy.generator.preset import load_preset
 
     preset = load_preset(Path(__file__).parents[1] / "presets" / "concept_v1.yaml")
-    return Pipeline(
+    kwargs = dict(
         weather_client=FakeWeather(),
         collector=FakeCollector(tmp_path / "ws"),
         analyzer=FakeAnalyzer(),
@@ -81,8 +102,14 @@ def pipeline(tmp_path: Path) -> Pipeline:
         archive=Archive(tmp_path / "a.db"),
         preset=preset,
         output_root=tmp_path / "outputs",
-        looks_per_source=20,
     )
+    kwargs.update(overrides)
+    return Pipeline(**kwargs)
+
+
+@pytest.fixture
+def pipeline(tmp_path: Path) -> Pipeline:
+    return make_pipeline(tmp_path)
 
 
 def test_gather_produces_week_and_assignment(pipeline: Pipeline):
@@ -92,6 +119,36 @@ def test_gather_produces_week_and_assignment(pipeline: Pipeline):
     assert len(state.week) == 1
     assert state.week[0].date == date(2026, 8, 4)  # base_date(8/3)의 다음날
     assert len(state.assignment) == 4
+
+
+def test_gather_analyzes_in_a_single_batch_with_weather(pipeline: Pipeline):
+    """분석은 배치 1회 호출이고, 내일 날씨가 함께 전달된다."""
+    state = pipeline.gather(base_date=date(2026, 8, 3))
+
+    assert pipeline.analyzer.calls == 1
+    assert pipeline.analyzer.last_day == state.week[0]
+
+
+def test_gather_passes_source_quotas_to_collector(tmp_path: Path):
+    quotas = {"musinsa_snap": 6, "uniqlo_men": 2, "uniqlo_women": 2}
+    pipeline = make_pipeline(tmp_path, source_quotas=quotas)
+
+    pipeline.gather(base_date=date(2026, 8, 3))
+
+    assert pipeline.collector.last_quotas == quotas
+
+
+def test_gather_fails_loudly_when_batch_analysis_fails(pipeline: Pipeline):
+    """배치 분석 실패는 부분 성공이 없다. 조용히 넘어가지 않는다."""
+
+    class BrokenAnalyzer:
+        def analyze_batch(self, raw_looks, day):
+            raise ValueError("분석 결과를 파싱할 수 없습니다")
+
+    pipeline.analyzer = BrokenAnalyzer()
+
+    with pytest.raises(ValueError, match="분석 결과를 파싱"):
+        pipeline.gather(base_date=date(2026, 8, 3))
 
 
 def test_gather_does_not_write_to_outputs(pipeline: Pipeline, tmp_path: Path):
@@ -106,6 +163,22 @@ def test_gather_saves_looks_to_archive(pipeline: Pipeline):
 
     assert pipeline.archive.count() == 14
     assert state.assignment is not None
+
+
+def test_rainy_day_fills_slots_conditionally_with_caveats(tmp_path: Path):
+    """전원 우천 부적합이어도 빈손이 아니라 조건부 추천 + 사유가 나온다."""
+    pipeline = make_pipeline(
+        tmp_path,
+        weather_client=FakeWeather(precip_prob=78),
+        analyzer=FakeAnalyzer(rain_ok=False),
+    )
+
+    state = pipeline.gather(base_date=date(2026, 8, 3))
+
+    filled = [v for v in state.assignment.values() if v is not None]
+    assert filled, "조건부 추천으로도 채워지지 않았다"
+    assert state.caveats, "조건부 추천 사유가 비어 있다"
+    assert any("우천" in reason for reason in state.caveats.values())
 
 
 def test_generate_images_does_not_write_to_outputs(pipeline: Pipeline, tmp_path: Path):
@@ -157,24 +230,6 @@ def test_finalize_writes_outputs_and_marks_usage(pipeline: Pipeline, tmp_path: P
     assert leftover is None, f"사용 처리된 룩이 다시 후보로 나왔다: {leftover}"
 
 
-def test_gather_skips_look_whose_analysis_fails(pipeline: Pipeline):
-    """룩 한 장의 분석 실패가 주 전체를 막지 않는다."""
-    working = pipeline.analyzer
-
-    class FlakyAnalyzer:
-        def analyze(self, raw_look):
-            if raw_look.look_id == "L3":
-                raise ValueError("분석 결과를 파싱할 수 없습니다")
-            return working.analyze(raw_look)
-
-    pipeline.analyzer = FlakyAnalyzer()
-
-    state = pipeline.gather(base_date=date(2026, 8, 3))
-
-    assert len(state.looks) == 13  # 수집 14개 중 1개만 탈락
-    assert all(look.look_id != "L3" for look in state.looks)
-
-
 def test_generate_images_skips_slot_whose_generation_fails(pipeline: Pipeline):
     """이미지 한 장의 생성 실패가 나머지 슬롯을 막지 않는다."""
     working = pipeline.generator
@@ -183,11 +238,11 @@ def test_generate_images_skips_slot_whose_generation_fails(pipeline: Pipeline):
         def __init__(self):
             self.calls = 0
 
-        def generate(self, source_image, analysis, preset, strength):
+        def generate(self, source_image, analysis, preset, strength, day=None):
             self.calls += 1
             if self.calls == 1:
                 raise RuntimeError("이미지 엔진 오류")
-            return working.generate(source_image, analysis, preset, strength)
+            return working.generate(source_image, analysis, preset, strength, day)
 
     pipeline.generator = FlakyGenerator()
 
@@ -201,19 +256,8 @@ def test_generate_images_skips_slot_whose_generation_fails(pipeline: Pipeline):
 
 def test_full_flow_with_insufficient_looks_still_completes(tmp_path: Path):
     """룩이 모자라도 흐름은 끝까지 간다. 빈 칸 + 경고로 처리."""
-    from willy.archive import Archive
-    from willy.generator.preset import load_preset
-
-    preset = load_preset(Path(__file__).parents[1] / "presets" / "concept_v1.yaml")
-    pipeline = Pipeline(
-        weather_client=FakeWeather(),
-        collector=FakeCollector(tmp_path / "ws", count=2),
-        analyzer=FakeAnalyzer(),
-        generator=FakeGenerator(tmp_path / "gen"),
-        archive=Archive(tmp_path / "a.db"),
-        preset=preset,
-        output_root=tmp_path / "outputs",
-        looks_per_source=20,
+    pipeline = make_pipeline(
+        tmp_path, collector=FakeCollector(tmp_path / "ws", count=2)
     )
 
     state = pipeline.gather(base_date=date(2026, 8, 3))
