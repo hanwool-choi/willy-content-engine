@@ -117,9 +117,14 @@ python run.py
 
 ## 매일 아침 자동 게시 (GitHub Actions + Pages)
 
-`.github/workflows/daily.yml` 이 **매일 08:00 KST**(23:00 UTC)에 수집·분석·
+`.github/workflows/daily.yml` 이 **매일 07:40 KST**(22:40 UTC)에 수집·분석·
 텍스트 생성을 돌리고, 결과를 정적 보드로 만들어 GitHub Pages에 올린다.
 PC를 켜둘 필요가 없고 주소가 고정된다.
+
+정시(:00)에 걸지 않는 이유가 있다. 예약 작업이 정시에 몰리면 GitHub이
+실행을 미루거나 건너뛴다 — 08:00 KST로 걸었을 때 트리거가 아예 오지
+않은 적이 있다. 아침에 보드가 비어 있으면 Actions 탭에서 **Run workflow**로
+바로 돌리면 된다.
 
 ```bash
 python build_site.py site   # 로컬에서 같은 결과를 만들어 볼 때
