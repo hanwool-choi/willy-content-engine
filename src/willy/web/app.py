@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import threading
 from datetime import date
 from pathlib import Path
@@ -11,15 +12,43 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
+from willy.ideas.collector import collect_ideas
+from willy.ideas.detail import fetch_detail
+from willy.ideas.models import IdeaItem
+from willy.ideas.sources import IDEA_SOURCES, SOURCE_GROUPS
 from willy.images import UnsupportedImageError, sniff
 from willy.models import Gender
 from willy.pipeline import Pipeline, PipelineState
+
+log = logging.getLogger(__name__)
 
 STATIC = Path(__file__).parent / "static"
 
 
 class GatherRequest(BaseModel):
     base_date: date
+
+
+class IdeaTextsRequest(BaseModel):
+    urls: list[str]
+
+
+def _serialize_idea(item: IdeaItem) -> dict:
+    source = IDEA_SOURCES.get(item.source)
+    return {
+        "source": item.source,
+        "source_label": source.label if source else item.source,
+        "group": source.group if source else "magazine",
+        "title": item.title,
+        "url": item.url,
+        "category": item.category,
+        "thumbnail_url": item.thumbnail_url,
+        "published_at": item.published_at.isoformat() if item.published_at else None,
+        "views": item.views,
+        "comments": item.comments,
+        "likes": item.likes,
+        "is_hot": item.is_hot,
+    }
 
 
 def _serialize(state: PipelineState) -> dict:
@@ -91,9 +120,14 @@ def _serialize(state: PipelineState) -> dict:
     }
 
 
-def create_app(pipeline_factory: Callable[[], Pipeline]) -> FastAPI:
-    app = FastAPI(title="내일 뭐입지? 콘텐츠 엔진")
-    ctx: dict = {"pipeline": None, "state": None, "generated": False}
+def create_app(
+    pipeline_factory: Callable[[], Pipeline],
+    ideas_collector: Callable[[], tuple[list, list[str]]] | None = None,
+    detail_fetcher: Callable[[str], str] | None = None,
+    ideas_writer: Callable[[list], list[dict]] | None = None,
+) -> FastAPI:
+    app = FastAPI(title="최윌리 옷장연구소 콘텐츠 플랫폼")
+    ctx: dict = {"pipeline": None, "state": None, "generated": False, "ideas": []}
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
@@ -178,6 +212,63 @@ def create_app(pipeline_factory: Callable[[], Pipeline]) -> FastAPI:
         if ctx["state"] is None:
             raise HTTPException(409, "먼저 수집을 실행해 주세요.")
         return {"texts": ctx["pipeline"].write_texts(ctx["state"])}
+
+    # 아이디어 수집도 여러 탭에서 겹쳐 돌 수 있다. 룩 수집과 같은 이유로 잠근다.
+    ideas_lock = threading.Lock()
+
+    @app.post("/api/ideas")
+    def ideas() -> dict:
+        if not ideas_lock.acquire(blocking=False):
+            raise HTTPException(
+                409, "아이디어를 이미 모으는 중입니다. 끝날 때까지 기다려 주세요."
+            )
+        try:
+            collector = ideas_collector or (lambda: collect_ideas())
+            items, failed = collector()
+            ctx["ideas"] = items
+            return {
+                "items": [_serialize_idea(item) for item in items],
+                "failed": failed,
+                "groups": SOURCE_GROUPS,
+            }
+        finally:
+            ideas_lock.release()
+
+    @app.post("/api/ideas/texts")
+    def idea_texts(request: IdeaTextsRequest) -> dict:
+        if not request.urls:
+            raise HTTPException(400, "소식을 하나 이상 선택해 주세요.")
+        if not ctx["ideas"]:
+            raise HTTPException(409, "먼저 아이디어를 불러와 주세요.")
+
+        # 목록에 있는 주소만 연다. 임의 주소를 받으면 서버가 남의 사이트를
+        # 긁는 통로가 된다.
+        by_url = {item.url: item for item in ctx["ideas"]}
+        if any(url not in by_url for url in request.urls):
+            raise HTTPException(400, "목록에 없는 소식입니다.")
+
+        fetcher = detail_fetcher or fetch_detail
+        pairs = []
+        for url in request.urls:
+            try:
+                detail = fetcher(url)
+            except Exception:
+                log.exception("상세 수집 실패: %s", url)
+                detail = ""
+            pairs.append((by_url[url], detail))
+
+        if ideas_writer is not None:
+            return {"texts": ideas_writer(pairs)}
+
+        from willy.texter import template_idea_texts
+
+        writer = ctx["pipeline"].texter if ctx["pipeline"] else None
+        if writer is not None:
+            try:
+                return {"texts": writer.write_from_ideas(pairs)}
+            except Exception:
+                log.exception("소식 텍스트 생성 실패 — 템플릿 폴백")
+        return {"texts": template_idea_texts(pairs)}
 
     @app.post("/api/generate")
     def generate() -> dict:
