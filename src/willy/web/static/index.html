@@ -195,6 +195,38 @@
     font-size: 11px; color: var(--ink-soft); letter-spacing: .18em;
   }
 
+  /* ── 탭과 필터 칩 ── */
+  .tabs { display: flex; gap: 4px; margin: 18px 0 0; border-bottom: 1px solid var(--line); }
+  .tab {
+    font: inherit; cursor: pointer; padding: 9px 16px; margin-bottom: -1px;
+    background: transparent; border: none; border-bottom: 2px solid transparent;
+    color: var(--ink-soft);
+  }
+  .tab.is-active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 14px 0 0; }
+  .chip {
+    font: inherit; font-size: 12px; cursor: pointer; padding: 5px 12px;
+    border: 1px solid var(--line); border-radius: 999px; background: var(--card);
+    color: var(--ink);
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip.is-active { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+
+  /* ── 아이디어 카드 ── */
+  .idea label { display: flex; gap: 9px; align-items: flex-start; cursor: pointer; }
+  .idea input { margin-top: 3px; flex: none; }
+  .idea .body { min-width: 0; }
+  .idea .headline {
+    display: block; font-weight: 600; color: var(--ink); font-size: 12px;
+    margin: 4px 0 3px; word-break: break-word;
+  }
+  .badge-hot {
+    font-size: 10px; font-weight: 700; color: #b0491f; background: #fbe9e2;
+    padding: 2px 6px; border-radius: 3px; margin-left: 4px;
+  }
+  .idea .src { position: static; display: inline-block; }
+  .idea .src-link { display: inline-block; margin-top: 6px; }
+
   /* ── 텍스트 콘텐츠 ── */
   .texts { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
   .text-card {
@@ -246,8 +278,14 @@
   <div class="masthead">
     <span class="lab">CHOI WILLY LAB · 옷장연구소</span>
   </div>
-  <h1>내일 뭐입지<span class="q">?</span></h1>
+  <h1>최윌리 옷장연구소<span class="q">.</span></h1>
 
+  <nav class="tabs">
+    <button class="tab is-active" data-tab="outfit" type="button">내일 뭐입지?</button>
+    <button class="tab" data-tab="ideas" type="button">콘텐츠 아이디어 보울</button>
+  </nav>
+
+<section id="panel-outfit">
   <div class="console">
     <input type="date" id="base" aria-label="기준 날짜" />
     <div class="steps">
@@ -288,6 +326,35 @@
   </div>
 
   <pre id="result"></pre>
+</section>
+
+<section id="panel-ideas" hidden>
+  <div class="console">
+    <div class="steps">
+      <button id="btn-ideas"><span class="no">1</span>아이디어 불러오기</button>
+      <button id="btn-idea-texts" disabled><span class="no">2</span>선택 항목으로 텍스트 만들기</button>
+    </div>
+    <span id="idea-busy" hidden></span>
+  </div>
+
+  <div id="idea-warn"></div>
+  <div id="idea-filters" class="chips"></div>
+
+  <h2 id="idea-list-title" hidden>오늘의 소식 <span class="muted" id="idea-count"></span></h2>
+  <div class="rule" id="idea-list-rule" hidden></div>
+  <div class="pool" id="idea-list"></div>
+
+  <h2 id="idea-texts-title" hidden>텍스트 콘텐츠 <span class="muted">복사해서 바로 올릴 수 있는 3가지 톤</span></h2>
+  <div class="rule" id="idea-texts-rule" hidden></div>
+  <div class="texts" id="idea-texts"></div>
+
+  <div class="empty-note" id="idea-empty">
+    <b>1 아이디어 불러오기</b>를 누르면 어미새·하입비스트·아이즈매거진과
+    매거진 4곳에서 오늘의 패션 소식(할인·드랍·협업)을 모읍니다.
+    반응이 좋은 글에는 뱃지가 붙습니다. 쓸 만한 항목을 고르고
+    <b>2 텍스트 만들기</b>를 누르면 채널 말투로 3가지 톤을 만들어 줍니다.
+  </div>
+</section>
 
   <footer>WILLY CONTENT ENGINE · 로컬 전용 · 이미지·영상 생성과 업로드는 수동 진행</footer>
 </main>
@@ -490,12 +557,14 @@
       afterGather();
     });
 
-  function textCard(t, index) {
+  // 두 탭이 각자 텍스트 카드를 그린다. id가 겹치지 않게 접두사를 받는다.
+  function textCard(t, index, prefix = "text-body") {
+    const id = `${prefix}-${index}`;
     return `
       <div class="text-card">
         <span class="tone">${esc(t.tone)}</span>
-        <pre id="text-body-${index}">${esc(t.text)}</pre>
-        <button type="button" data-copy="${index}">복사</button>
+        <pre id="${id}">${esc(t.text)}</pre>
+        <button type="button" data-copy="${id}">복사</button>
       </div>`;
   }
 
@@ -508,14 +577,126 @@
       $("texts-title").scrollIntoView({ behavior: "smooth" });
     });
 
-  $("texts").addEventListener("click", async (event) => {
+  // 두 탭의 텍스트 카드를 함께 받는다.
+  document.addEventListener("click", async (event) => {
     const button = event.target.closest("button[data-copy]");
     if (!button) return;
-    const body = $("text-body-" + button.dataset.copy).textContent;
-    await navigator.clipboard.writeText(body);
+    await navigator.clipboard.writeText($(button.dataset.copy).textContent);
     button.textContent = "복사됨 ✓";
     setTimeout(() => (button.textContent = "복사"), 1500);
   });
+
+  // ── 탭 ────────────────────────────────────────────────
+  document.querySelectorAll(".tab").forEach((tab) => {
+    tab.onclick = () => {
+      document.querySelectorAll(".tab").forEach((t) => t.classList.remove("is-active"));
+      tab.classList.add("is-active");
+      $("panel-outfit").hidden = tab.dataset.tab !== "outfit";
+      $("panel-ideas").hidden = tab.dataset.tab !== "ideas";
+    };
+  });
+
+  // ── 콘텐츠 아이디어 보울 ────────────────────────────────
+  let activeGroup = "all";
+
+  function ideaCard(i) {
+    const meta = [
+      i.category,
+      i.likes != null ? `♥ ${i.likes}` : null,
+      i.comments != null ? `댓글 ${i.comments}` : null,
+      i.views != null ? `조회 ${i.views}` : null,
+    ].filter(Boolean).map(esc).join(" · ");
+
+    return `
+      <div class="look idea" data-group="${esc(i.group)}">
+        <label>
+          <input type="checkbox" data-url="${esc(i.url)}" />
+          <span class="body">
+            <span class="src">${esc(i.source_label)}</span>
+            ${i.is_hot ? '<span class="badge-hot">🔥 반응 좋음</span>' : ""}
+            <b class="headline">${esc(i.title)}</b>
+            <span class="meta">${meta}</span>
+          </span>
+        </label>
+        <a class="src-link" href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">원본 ↗</a>
+      </div>`;
+  }
+
+  function applyGroupFilter() {
+    let shown = 0;
+    document.querySelectorAll(".idea").forEach((card) => {
+      const hide = activeGroup !== "all" && card.dataset.group !== activeGroup;
+      card.hidden = hide;
+      if (!hide) shown += 1;
+    });
+    $("idea-count").textContent = `${shown}건`;
+  }
+
+  function renderIdeas(data) {
+    $("idea-empty").hidden = true;
+    $("idea-warn").innerHTML = data.failed.length
+      ? `<div class="warn">${data.failed.map(esc).join(", ")} 수집에 실패했습니다. 나머지 소스만 모았습니다.</div>`
+      : "";
+
+    const chips = [["all", "전체"], ...Object.entries(data.groups)];
+    $("idea-filters").innerHTML = chips
+      .map(([key, label]) =>
+        `<button class="chip ${key === activeGroup ? "is-active" : ""}" data-group="${esc(key)}">${esc(label)}</button>`)
+      .join("");
+
+    $("idea-list").innerHTML = data.items.map(ideaCard).join("");
+    $("idea-list-title").hidden = $("idea-list-rule").hidden = false;
+    applyGroupFilter();
+    $("btn-idea-texts").disabled = true;
+  }
+
+  $("idea-filters").addEventListener("click", (event) => {
+    const chip = event.target.closest(".chip");
+    if (!chip) return;
+    activeGroup = chip.dataset.group;
+    document.querySelectorAll(".chip").forEach((c) => c.classList.remove("is-active"));
+    chip.classList.add("is-active");
+    applyGroupFilter();
+  });
+
+  $("idea-list").addEventListener("change", () => {
+    const picked = document.querySelectorAll("#idea-list input:checked").length;
+    $("btn-idea-texts").disabled = picked === 0;
+  });
+
+  // 아이디어 수집도 몇십 초 걸린다. 도는 동안 버튼을 잠근다.
+  async function withIdeaBusy(message, task) {
+    $("idea-busy").textContent = message;
+    $("idea-busy").hidden = false;
+    ["btn-ideas", "btn-idea-texts"].forEach((id) => ($(id).disabled = true));
+    try {
+      await task();
+    } finally {
+      $("idea-busy").hidden = true;
+      $("btn-ideas").disabled = false;
+      const picked = document.querySelectorAll("#idea-list input:checked").length;
+      $("btn-idea-texts").disabled = picked === 0;
+    }
+  }
+
+  $("btn-ideas").onclick = () =>
+    withIdeaBusy("소식을 모으는 중… 30초쯤 걸립니다.", async () => {
+      renderIdeas(await call("/api/ideas"));
+      $("idea-texts-title").hidden = $("idea-texts-rule").hidden = true;
+      $("idea-texts").innerHTML = "";
+    });
+
+  $("btn-idea-texts").onclick = () =>
+    withIdeaBusy("텍스트를 쓰는 중…", async () => {
+      const urls = [...document.querySelectorAll("#idea-list input:checked")]
+        .map((input) => input.dataset.url);
+      const data = await call("/api/ideas/texts", { urls });
+      $("idea-texts").innerHTML = data.texts
+        .map((t, i) => textCard(t, i, "idea-text-body"))
+        .join("");
+      $("idea-texts-title").hidden = $("idea-texts-rule").hidden = false;
+      $("idea-texts-title").scrollIntoView({ behavior: "smooth" });
+    });
 
   // ── 확대 보기: 썸네일 클릭 → 큰 이미지 + 원본 페이지 링크 ──
   function openLightbox(src, link) {

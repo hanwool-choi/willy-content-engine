@@ -330,3 +330,36 @@ def test_regather_reruns_with_same_base_date(client: TestClient):
     body = response.json()
     assert body["week"][0]["date"] == first["week"][0]["date"]
     assert body["pool"]
+
+
+def test_page_has_two_tabs(client: TestClient):
+    page = client.get("/").text
+
+    assert 'data-tab="outfit"' in page
+    assert 'data-tab="ideas"' in page
+    assert "내일 뭐입지?" in page
+    assert "콘텐츠 아이디어 보울" in page
+
+
+def test_ideas_tab_has_controls(client: TestClient):
+    page = client.get("/").text
+
+    assert 'id="btn-ideas"' in page
+    assert 'id="btn-idea-texts"' in page
+    assert 'id="idea-filters"' in page
+    assert 'id="idea-list"' in page
+
+
+def test_idea_values_are_escaped(client: TestClient):
+    """외부 사이트에서 온 제목이 그대로 실행되면 안 된다."""
+    page = client.get("/").text
+
+    for expression in ("i.title", "i.source_label", "i.url", "i.group"):
+        lines = [line for line in page.splitlines() if expression in line]
+        assert lines, f"{expression} 를 찾지 못했다"
+        assert all("esc(" in line for line in lines), (
+            f"{expression} 가 이스케이프되지 않았다: {lines}"
+        )
+    # 카테고리·반응 수는 배열로 모아 한 번에 이스케이프한다.
+    assert ".filter(Boolean).map(esc)" in page, "메타 값이 이스케이프되지 않았다"
+    assert "data.failed.map(esc)" in page, "실패 소스 이름이 이스케이프되지 않았다"

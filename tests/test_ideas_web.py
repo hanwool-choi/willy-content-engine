@@ -93,3 +93,80 @@ def test_texts_endpoint_generates_three_tones(client: TestClient):
     body = client.post("/api/ideas/texts", json={"urls": ["https://x.test/1"]}).json()
 
     assert len(body["texts"]) == 3
+
+
+def test_idea_texts_work_without_running_look_gather(tmp_path: Path):
+    """두 탭은 독립이다. 소식 텍스트를 쓰려고 룩 수집을 먼저 돌릴 이유가 없다."""
+    from tests.test_pipeline import (
+        FakeAnalyzer, FakeCollector, FakeGenerator, FakeWeather,
+    )
+    from willy.archive import Archive
+    from willy.generator.preset import load_preset
+    from willy.pipeline import Pipeline
+
+    preset = load_preset(Path(__file__).parents[1] / "presets" / "concept_v1.yaml")
+    calls: list = []
+
+    def factory() -> Pipeline:
+        return Pipeline(
+            weather_client=FakeWeather(), collector=FakeCollector(tmp_path / "ws"),
+            analyzer=FakeAnalyzer(), generator=FakeGenerator(tmp_path / "gen"),
+            archive=Archive(tmp_path / "a.db"), preset=preset,
+            output_root=tmp_path / "outputs",
+        )
+
+    def writer(pairs):
+        calls.append(pairs)
+        return [{"tone": f"톤{i}", "text": f"본문 {i}"} for i in range(3)]
+
+    local = TestClient(
+        create_app(
+            factory,
+            ideas_collector=lambda: ([idea()], []),
+            detail_fetcher=lambda url: "본문",
+            ideas_writer=writer,
+        )
+    )
+    local.post("/api/ideas")
+
+    body = local.post("/api/ideas/texts", json={"urls": ["https://x.test/1"]}).json()
+
+    assert calls, "룩 수집 없이도 AI 작성자가 호출돼야 한다"
+    assert len(body["texts"]) == 3
+    assert "템플릿" not in body["texts"][0]["tone"]
+
+
+def test_idea_texts_fall_back_to_template_when_writer_fails(tmp_path: Path):
+    from tests.test_pipeline import (
+        FakeAnalyzer, FakeCollector, FakeGenerator, FakeWeather,
+    )
+    from willy.archive import Archive
+    from willy.generator.preset import load_preset
+    from willy.pipeline import Pipeline
+
+    preset = load_preset(Path(__file__).parents[1] / "presets" / "concept_v1.yaml")
+
+    def factory() -> Pipeline:
+        return Pipeline(
+            weather_client=FakeWeather(), collector=FakeCollector(tmp_path / "ws"),
+            analyzer=FakeAnalyzer(), generator=FakeGenerator(tmp_path / "gen"),
+            archive=Archive(tmp_path / "a.db"), preset=preset,
+            output_root=tmp_path / "outputs",
+        )
+
+    def broken(pairs):
+        raise RuntimeError("HTTP 429")
+
+    local = TestClient(
+        create_app(
+            factory,
+            ideas_collector=lambda: ([idea()], []),
+            detail_fetcher=lambda url: "본문",
+            ideas_writer=broken,
+        )
+    )
+    local.post("/api/ideas")
+
+    body = local.post("/api/ideas/texts", json={"urls": ["https://x.test/1"]}).json()
+
+    assert "템플릿" in body["texts"][0]["tone"]

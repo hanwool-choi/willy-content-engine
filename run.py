@@ -86,7 +86,16 @@ def build_pipeline() -> Pipeline:
 
 
 def main() -> None:
-    app = create_app(build_pipeline)
+    settings = Settings.load()
+
+    # 아이디어 탭은 룩 수집과 독립이다. 텍스트 작성자를 따로 넘겨야
+    # 수집을 돌리지 않고도 소식 텍스트를 만들 수 있다.
+    ideas_writer = None
+    if settings.gemini_api_key:
+        texter = TextWriter(settings.gemini_api_key)
+        ideas_writer = texter.write_from_ideas
+
+    app = create_app(build_pipeline, ideas_writer=ideas_writer)
     uvicorn.run(app, host="127.0.0.1", port=8765)
 
 

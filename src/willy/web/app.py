@@ -257,15 +257,19 @@ def create_app(
                 detail = ""
             pairs.append((by_url[url], detail))
 
-        if ideas_writer is not None:
-            return {"texts": ideas_writer(pairs)}
-
         from willy.texter import template_idea_texts
 
-        writer = ctx["pipeline"].texter if ctx["pipeline"] else None
-        if writer is not None:
+        # 두 탭은 독립이다. 아이디어 텍스트를 쓰려고 룩 수집을 먼저
+        # 돌려야 한다면 흐름이 어긋난다. 주입된 작성자를 우선 쓰고,
+        # 없을 때만 파이프라인 것을 빌린다.
+        writer_fn = ideas_writer
+        if writer_fn is None and ctx["pipeline"] is not None:
+            texter = ctx["pipeline"].texter
+            writer_fn = texter.write_from_ideas if texter else None
+
+        if writer_fn is not None:
             try:
-                return {"texts": writer.write_from_ideas(pairs)}
+                return {"texts": writer_fn(pairs)}
             except Exception:
                 log.exception("소식 텍스트 생성 실패 — 템플릿 폴백")
         return {"texts": template_idea_texts(pairs)}
