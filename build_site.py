@@ -28,6 +28,7 @@ from willy.collector.collector import Collector
 from willy.config import PROJECT_ROOT, Settings
 from willy.generator.noop import NoopGenerator
 from willy.generator.preset import load_preset
+from willy.ideas.collector import collect_ideas
 from willy.pipeline import Pipeline
 from willy.publisher.site import render_site
 from willy.texter import TextWriter
@@ -147,8 +148,21 @@ def main() -> None:
     texts = pipeline.write_texts(state)
     log.info("텍스트 %d종 생성", len(texts))
 
+    # 아이디어가 통째로 실패해도 보드 게시는 진행한다. 아침에 보드가
+    # 아예 없는 것보다 아이디어만 빠진 편이 낫다.
+    try:
+        ideas, failed_sources = collect_ideas(
+            page_factory=lambda: browser_page(headless=True)
+        )
+        log.info("아이디어 %d건 수집 (실패: %s)", len(ideas), failed_sources or "없음")
+    except Exception:
+        log.exception("아이디어 수집 실패 — 아이디어 없이 게시합니다")
+        ideas = []
+
     og_image = copy_og_image(PROJECT_ROOT / "assets", out_dir)
-    html = render_site(state, texts, datetime.now(KST), og_image=og_image)
+    html = render_site(
+        state, texts, datetime.now(KST), og_image=og_image, ideas=ideas
+    )
     (out_dir / "index.html").write_text(html, encoding="utf-8")
     # Pages가 _로 시작하는 경로를 Jekyll로 처리하지 않게 한다.
     (out_dir / ".nojekyll").write_text("", encoding="utf-8")

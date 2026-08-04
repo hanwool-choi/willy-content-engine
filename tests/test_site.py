@@ -289,3 +289,50 @@ def test_no_og_image_tag_when_file_is_missing():
 
     assert "og:image" not in html
     assert 'property="og:title"' in html, "이미지가 없어도 제목·설명은 남는다"
+
+
+# ── 콘텐츠 아이디어 보울 (읽기 전용) ────────────────────────
+
+def _idea(**kwargs):
+    from willy.ideas.models import IdeaItem
+
+    base = dict(
+        source="eyesmag", title="버켄스탁 x 아더에러 협업", url="https://x.test/1"
+    )
+    base.update(kwargs)
+    return IdeaItem(**base)
+
+
+def test_site_renders_idea_section():
+    ideas = [_idea(category="패션 > 슈즈", views=9000, is_hot=True)]
+
+    html = render_site(state_with(), TEXTS, STAMP, ideas=ideas)
+
+    assert "콘텐츠 아이디어 보울" in html
+    assert "버켄스탁 x 아더에러 협업" in html
+    assert "https://x.test/1" in html
+    assert "🔥" in html
+    assert "아이즈" in html, "소스 배지가 보여야 어디서 온 소식인지 안다"
+
+
+def test_site_without_ideas_omits_the_section():
+    html = render_site(state_with(), TEXTS, STAMP, ideas=[])
+
+    assert "콘텐츠 아이디어 보울" not in html
+
+
+def test_published_idea_section_has_no_selection_controls():
+    """정적 페이지라 선택·생성이 불가능하다. 되는 척하면 안 된다."""
+    html = render_site(state_with(), TEXTS, STAMP, ideas=[_idea()])
+
+    assert "읽기 전용" in html
+    assert 'type="checkbox"' not in html
+
+
+def test_idea_titles_are_escaped_on_the_published_page():
+    ideas = [_idea(source="vogue", title="<script>alert(1)</script>")]
+
+    html = render_site(state_with(), TEXTS, STAMP, ideas=ideas)
+
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;" in html

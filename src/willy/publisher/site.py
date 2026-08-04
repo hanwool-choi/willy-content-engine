@@ -15,6 +15,7 @@ from willy.config import (
     SITE_TITLE,
     SOURCE_ORIGINS,
 )
+from willy.ideas.sources import IDEA_SOURCES
 from willy.models import DayWeather, Gender, LookAnalysis
 from willy.pipeline import PipelineState
 
@@ -134,6 +135,28 @@ def _pool_card(look: LookAnalysis) -> str:
       </div>"""
 
 
+def _idea_card(item) -> str:
+    """게시 페이지의 아이디어 카드. 정적이라 선택·생성은 없고 링크만 건다."""
+    source = IDEA_SOURCES.get(item.source)
+    label = source.label if source else item.source
+    meta = " · ".join(
+        escape(str(part))
+        for part in (
+            item.category,
+            f"♥ {item.likes}" if item.likes is not None else None,
+            f"조회 {item.views}" if item.views is not None else None,
+        )
+        if part
+    )
+    return f"""
+      <div class="look">
+        <span class="src">{escape(label)}</span>
+        {'<span class="badge hot">🔥 반응 좋음</span>' if item.is_hot else ''}
+        <div class="meta"><b>{escape(item.title)}</b><br />{meta}</div>
+        <a class="src-link" href="{escape(item.url)}" target="_blank" rel="noopener noreferrer">원본 ↗</a>
+      </div>"""
+
+
 def _text_card(index: int, entry: dict) -> str:
     return f"""
       <div class="text-card">
@@ -169,6 +192,7 @@ def render_site(
     texts: list[dict],
     generated_at: datetime,
     og_image: str | None = None,
+    ideas: list | None = None,
 ) -> str:
     day = state.week[0]
     accent = _accent(day)
@@ -183,6 +207,16 @@ def render_site(
     )
     pool = "".join(_pool_card(look) for look in state.looks)
     text_cards = "".join(_text_card(i, entry) for i, entry in enumerate(texts))
+
+    # 정적 페이지라 선택·생성이 불가능하다(브라우저에서 AI를 부르려면
+    # 키를 공개해야 한다). 읽기 전용 목록으로 두고 생성은 로컬 앱에서 한다.
+    idea_section = ""
+    if ideas:
+        idea_cards = "".join(_idea_card(item) for item in ideas)
+        idea_section = f"""
+  <h2>콘텐츠 아이디어 보울 <span class="muted">{len(ideas)}건 · 읽기 전용</span></h2>
+  <div class="rule"></div>
+  <div class="pool">{idea_cards}</div>"""
 
     # 폴백이 동작하면 배치는 성공으로 끝난다. 페이지가 알려주지 않으면
     # 분석·텍스트가 빠진 날을 아무도 눈치채지 못한다.
@@ -248,6 +282,7 @@ def render_site(
     border-radius:4px; }}
   .badge.warn {{ color:#9a6b15; background:#f6edd9; }}
   .badge.ai {{ color:#6b21a8; background:#f3e8ff; }}
+  .badge.hot {{ color:#b0491f; background:#fbe9e2; }}
   .range {{ color:var(--accent); font-weight:600; font-size:12px; }}
   .tags,.meta {{ color:var(--ink-soft); font-size:12px; }}
   .meta b {{ color:var(--ink); }}
@@ -304,6 +339,8 @@ def render_site(
   <h2>텍스트 콘텐츠 <span class="muted">복사해서 바로 올릴 수 있는 3가지 톤</span></h2>
   <div class="rule"></div>
   <div class="texts">{text_cards or '<p class="empty">생성된 텍스트가 없습니다.</p>'}</div>
+
+{idea_section}
 
   <h2>수집된 룩 <span class="muted">{len(state.looks)}장</span></h2>
   <div class="rule"></div>
