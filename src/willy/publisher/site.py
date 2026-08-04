@@ -15,9 +15,9 @@ from willy.config import (
     SITE_TITLE,
     SOURCE_ORIGINS,
 )
-from willy.ideas.sources import IDEA_SOURCES
 from willy.models import DayWeather, Gender, LookAnalysis
 from willy.pipeline import PipelineState
+from willy.publisher.ideas_section import render_idea_panel
 
 SOURCE_LABELS = {
     "musinsa_snap": "무신사",
@@ -135,28 +135,6 @@ def _pool_card(look: LookAnalysis) -> str:
       </div>"""
 
 
-def _idea_card(item) -> str:
-    """게시 페이지의 아이디어 카드. 정적이라 선택·생성은 없고 링크만 건다."""
-    source = IDEA_SOURCES.get(item.source)
-    label = source.label if source else item.source
-    meta = " · ".join(
-        escape(str(part))
-        for part in (
-            item.category,
-            f"♥ {item.likes}" if item.likes is not None else None,
-            f"조회 {item.views}" if item.views is not None else None,
-        )
-        if part
-    )
-    return f"""
-      <div class="look">
-        <span class="src">{escape(label)}</span>
-        {'<span class="badge hot">🔥 반응 좋음</span>' if item.is_hot else ''}
-        <div class="meta"><b>{escape(item.title)}</b><br />{meta}</div>
-        <a class="src-link" href="{escape(item.url)}" target="_blank" rel="noopener noreferrer">원본 ↗</a>
-      </div>"""
-
-
 def _text_card(index: int, entry: dict) -> str:
     return f"""
       <div class="text-card">
@@ -210,13 +188,28 @@ def render_site(
 
     # 정적 페이지라 선택·생성이 불가능하다(브라우저에서 AI를 부르려면
     # 키를 공개해야 한다). 읽기 전용 목록으로 두고 생성은 로컬 앱에서 한다.
-    idea_section = ""
-    if ideas:
-        idea_cards = "".join(_idea_card(item) for item in ideas)
-        idea_section = f"""
-  <h2>콘텐츠 아이디어 보울 <span class="muted">{len(ideas)}건 · 읽기 전용</span></h2>
-  <div class="rule"></div>
-  <div class="pool">{idea_cards}</div>"""
+    idea_panel = render_idea_panel(ideas or [])
+
+    # 탭이 하나뿐인 탭 UI는 뜻이 없다. 아이디어가 없으면 막대째 뺀다.
+    tab_bar = (
+        """
+  <nav class="tabs" role="tablist">
+    <button class="tab is-active" type="button" role="tab" data-panel="board">내일의 보드</button>
+    <button class="tab" type="button" role="tab" data-panel="ideas">콘텐츠 아이디어 보울</button>
+  </nav>"""
+        if idea_panel
+        else ""
+    )
+    ideas_panel = (
+        f"""
+  <section class="panel" id="panel-ideas">
+    <h2>콘텐츠 아이디어 보울 <span class="muted">{len(ideas)}건 · 읽기 전용</span></h2>
+    <div class="rule"></div>
+{idea_panel}
+  </section>"""
+        if idea_panel
+        else ""
+    )
 
     # 폴백이 동작하면 배치는 성공으로 끝난다. 페이지가 알려주지 않으면
     # 분석·텍스트가 빠진 날을 아무도 눈치채지 못한다.
@@ -282,7 +275,34 @@ def render_site(
     border-radius:4px; }}
   .badge.warn {{ color:#9a6b15; background:#f6edd9; }}
   .badge.ai {{ color:#6b21a8; background:#f3e8ff; }}
-  .badge.hot {{ color:#b0491f; background:#fbe9e2; }}
+  /* 탭과 접힘은 JS가 있을 때만 작동한다. 없으면 두 패널이 다 펼쳐진 채
+     남아야 Ctrl+F 검색과 링크 공유가 살아 있다. */
+  .tabs {{ display:none; gap:4px; margin:22px 0 0; border-bottom:1px solid var(--line); }}
+  .js .tabs {{ display:flex; }}
+  .tab {{ font:inherit; font-family:var(--serif); font-size:15px; cursor:pointer;
+    background:none; border:none; border-bottom:2px solid transparent;
+    padding:9px 14px; margin-bottom:-1px; color:var(--ink-soft); }}
+  .tab:hover {{ color:var(--ink); }}
+  .tab.is-active {{ color:var(--ink); border-bottom-color:var(--accent); }}
+  .js .panel {{ display:none; }}
+  .js .panel.is-active {{ display:block; }}
+  .idea-group {{ font-family:var(--serif); font-weight:600; font-size:16px;
+    margin:26px 0 8px; display:flex; align-items:baseline; gap:8px; }}
+  .idea-group .muted {{ font-family:var(--sans); font-size:12px; color:var(--ink-soft); }}
+  .idea-list {{ background:var(--card); border:1px solid var(--line);
+    border-radius:8px; overflow:hidden; }}
+  .idea-row {{ display:flex; flex-direction:column; gap:3px; padding:11px 14px;
+    text-decoration:none; color:inherit; border-top:1px solid var(--line); }}
+  .idea-row:first-child {{ border-top:none; }}
+  .idea-row:hover {{ background:var(--paper); }}
+  .idea-title {{ font-size:15px; line-height:1.45; }}
+  .idea-meta {{ font-size:12px; color:var(--ink-soft); }}
+  .js .idea-list.is-collapsed .is-extra {{ display:none; }}
+  .more {{ display:none; font:inherit; font-size:12px; cursor:pointer; margin-top:8px;
+    background:var(--card); border:1px solid var(--line); border-radius:6px;
+    padding:7px 14px; color:var(--ink-soft); }}
+  .js .more {{ display:inline-block; }}
+  .more:hover {{ border-color:var(--accent); color:var(--ink); }}
   .range {{ color:var(--accent); font-weight:600; font-size:12px; }}
   .tags,.meta {{ color:var(--ink-soft); font-size:12px; }}
   .meta b {{ color:var(--ink); }}
@@ -322,7 +342,9 @@ def render_site(
 <main>
   <span class="lab">CHOI WILLY LAB · 옷장연구소</span>
   <h1>내일 뭐입지<span class="q">?</span></h1>
+{tab_bar}
 
+  <section class="panel is-active" id="panel-board">
   <section class="ticket">
     <span class="date">{day.date.month:02d}.{day.date.day:02d} ({day.weekday_ko})</span>
     <span class="temp">{day.temp_max}℃<small> / {day.temp_min}℃</small></span>
@@ -340,11 +362,11 @@ def render_site(
   <div class="rule"></div>
   <div class="texts">{text_cards or '<p class="empty">생성된 텍스트가 없습니다.</p>'}</div>
 
-{idea_section}
-
   <h2>수집된 룩 <span class="muted">{len(state.looks)}장</span></h2>
   <div class="rule"></div>
   <div class="pool">{pool or '<p class="empty">수집된 룩이 없습니다.</p>'}</div>
+  </section>
+{ideas_panel}
 
   <footer>
     {generated_at:%Y-%m-%d %H:%M} KST 자동 생성 · 매일 아침 8시 갱신<br />
@@ -367,6 +389,22 @@ def render_site(
   const $ = (id) => document.getElementById(id);
   let current = null;
 
+  // 탭·접힘 CSS를 여기서 켠다. 스크립트가 실패하면 켜지지 않으므로
+  // 페이지는 전부 펼쳐진 평범한 문서로 남는다.
+  document.documentElement.classList.add("js");
+
+  const tabs = [...document.querySelectorAll(".tab")];
+
+  function showPanel(name) {{
+    tabs.forEach((tab) => tab.classList.toggle("is-active", tab.dataset.panel === name));
+    document.querySelectorAll(".panel").forEach((panel) =>
+      panel.classList.toggle("is-active", panel.id === "panel-" + name)
+    );
+    history.replaceState(null, "", name === "ideas" ? "#ideas" : location.pathname);
+  }}
+
+  if (tabs.length && location.hash === "#ideas") showPanel("ideas");
+
   function openLightbox(img) {{
     current = {{
       full: img.dataset.full,
@@ -385,6 +423,20 @@ def render_site(
   }}
 
   document.addEventListener("click", async (event) => {{
+    const tab = event.target.closest(".tab");
+    if (tab) {{
+      showPanel(tab.dataset.panel);
+      return;
+    }}
+
+    // 더 보기는 한 방향이다. 펼치면 버튼은 사라진다.
+    const more = event.target.closest(".more");
+    if (more) {{
+      more.previousElementSibling.classList.remove("is-collapsed");
+      more.remove();
+      return;
+    }}
+
     const copyButton = event.target.closest("button[data-copy]");
     if (copyButton) {{
       await navigator.clipboard.writeText(

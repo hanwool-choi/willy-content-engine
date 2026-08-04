@@ -336,3 +336,51 @@ def test_idea_titles_are_escaped_on_the_published_page():
 
     assert "<script>alert(1)</script>" not in html
     assert "&lt;script&gt;" in html
+
+
+# ── 탭 두 개 ──────────────────────────────────────────────
+
+def test_site_renders_two_tabs():
+    html = render_site(state_with(), TEXTS, STAMP, ideas=[_idea()])
+
+    assert 'data-panel="board"' in html
+    assert 'data-panel="ideas"' in html
+    assert "내일의 보드" in html
+    assert "콘텐츠 아이디어 보울" in html
+
+
+def test_board_content_lives_inside_the_board_panel():
+    html = render_site(state_with(), TEXTS, STAMP, ideas=[_idea()])
+
+    board_heading = html.index("<h2>내일의 보드</h2>")
+    assert html.index('id="panel-board"') < board_heading
+    assert board_heading < html.index('id="panel-ideas"')
+
+
+def test_idea_rows_live_inside_the_ideas_panel():
+    html = render_site(state_with(), TEXTS, STAMP, ideas=[_idea()])
+
+    assert html.index('id="panel-ideas"') < html.index('class="idea-row"')
+
+
+def test_site_without_ideas_has_no_tab_bar():
+    """탭이 하나뿐인 탭 UI는 뜻이 없다."""
+    html = render_site(state_with(), TEXTS, STAMP, ideas=[])
+
+    assert 'class="tabs"' not in html
+    assert 'data-panel=' not in html
+
+
+def test_tabs_and_collapsing_are_gated_on_js():
+    """JS가 죽으면 두 패널이 다 펼쳐져야 한다. 검색과 공유가 걸려 있다."""
+    html = render_site(state_with(), TEXTS, STAMP, ideas=[_idea()])
+
+    assert 'classList.add("js")' in html
+    assert ".js .panel" in html
+    assert ".js .idea-list.is-collapsed .is-extra" in html
+
+
+def test_ideas_panel_uses_list_markup_not_the_photo_grid():
+    html = render_site(state_with(), TEXTS, STAMP, ideas=[_idea()])
+
+    assert 'class="idea-list' in html
