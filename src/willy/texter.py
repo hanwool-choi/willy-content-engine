@@ -13,6 +13,7 @@ import time
 import httpx
 
 from willy.analyzer import gemini_generate
+from willy.ideas.models import IdeaItem
 from willy.models import DayWeather, Gender, LookAnalysis
 
 # 채널의 말투 기준. 사용자가 실제로 올린 글이다.
@@ -126,3 +127,78 @@ class TextWriter:
         if len(cleaned) != 3:
             raise ValueError(f"텍스트 결과가 3개가 아닙니다: {len(cleaned)}개")
         return cleaned
+
+    def write_from_ideas(
+        self, items_with_details: list[tuple["IdeaItem", str]]
+    ) -> list[dict]:
+        """고른 패션 소식으로 3가지 톤을 쓴다. 말투 기준은 룩 글과 같다."""
+        payload = {
+            "contents": [{"parts": [{"text": build_idea_prompt(items_with_details)}]}]
+        }
+        text = gemini_generate(self._http, self._api_key, payload, self._sleep)
+        entries = _extract_json_array(text)
+
+        cleaned = [
+            {"tone": str(e.get("tone", "")), "text": str(e.get("text", ""))}
+            for e in entries
+            if isinstance(e, dict) and e.get("text")
+        ]
+        if len(cleaned) != 3:
+            raise ValueError(f"텍스트 결과가 3개가 아닙니다: {len(cleaned)}개")
+        return cleaned
+
+
+# ── 패션 소식(콘텐츠 아이디어 보울) ─────────────────────────
+
+IDEA_TONES = (
+    ("소식 전달형", "무슨 브랜드가 무엇을 언제 내는지 사실부터 짚는다"),
+    ("의견 곁들임", "왜 살 만한지 한 줄 의견을 붙인다"),
+    ("위트", "가볍게 웃긴 한 줄을 섞되 정보는 유지한다"),
+)
+
+
+def build_idea_prompt(items_with_details: list[tuple[IdeaItem, str]]) -> str:
+    """패션 소식 -> Threads 텍스트 프롬프트. 말투 예시는 룩 글과 공유한다."""
+    blocks = []
+    for index, (item, detail) in enumerate(items_with_details, start=1):
+        blocks.append(
+            f"{index}. 제목: {item.title}\n"
+            f"   출처: {item.source} / 분류: {item.category or '없음'}\n"
+            f"   본문 발췌: {detail[:600]}"
+        )
+    tone_lines = "\n".join(
+        f"{i + 1}. {name}: {guide}" for i, (name, guide) in enumerate(IDEA_TONES)
+    )
+
+    return f"""너는 Threads 패션 채널 '옷장연구소'의 작가다. 아래 예시 글의 말투를
+기준으로, 주어진 패션 소식을 소개하는 글을 서로 다른 3가지 톤으로 써라.
+
+[말투 예시]
+{STYLE_EXAMPLE}
+
+[소개할 소식]
+{chr(10).join(blocks)}
+
+[톤 3종]
+{tone_lines}
+
+규칙:
+- 각 글은 Threads 한 게시물 분량(500자 이내), 한국어
+- 본문 발췌에 있는 사실(브랜드·가격·발매일)만 쓴다. 없는 숫자를 지어내지 마라
+- 소식이 여러 건이면 한 글에 묶어 소개한다
+- 마지막 줄은 예시처럼 팔로우 유도로 끝낸다
+- JSON 배열만 출력: [{{"tone": "톤 이름", "text": "본문"}}, ...] 정확히 3개"""
+
+
+def template_idea_texts(items_with_details: list[tuple[IdeaItem, str]]) -> list[dict]:
+    """AI 없이 제목만으로 만든 초안. 폴백용이라 1종만 만든다."""
+    lines = "\n".join(
+        f"{i}. {item.title}" for i, (item, _) in enumerate(items_with_details, start=1)
+    )
+    body = (
+        "오늘의 패션 소식 ‼️\n"
+        f"{lines or '1. (선택된 소식 없음)'}\n"
+        "자세한 건 각 브랜드 채널에서 확인.\n"
+        "팔로우 해두면 새 소식 놓칠 일 없습니다."
+    )
+    return [{"tone": "소식 전달형 (템플릿)", "text": body}]
