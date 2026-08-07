@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 배경 (원형 크롭 기준) -->
+  <circle cx="256" cy="256" r="256" fill="#F8CB6D"/>
+
+  <!-- 바닥 그림자 -->
+  <ellipse cx="245" cy="443" rx="118" ry="16" fill="#3A2E2A" opacity="0.12"/>
+
+  <!-- 깃대 -->
+  <line x1="382" y1="118" x2="382" y2="345" stroke="#3A2E2A" stroke-width="9" stroke-linecap="round"/>
+
+  <!-- 깃발 (펄럭이는 웨이브) -->
+  <path d="M388 122 C414 108 438 132 460 120 L454 176 C434 188 410 164 388 176 Z"
+        fill="#E8442E" stroke="#3A2E2A" stroke-width="7" stroke-linejoin="round"/>
+
+  <!-- 펄럭 모션 라인 -->
+  <path d="M352 96 q10 -8 22 -4" stroke="#3A2E2A" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <path d="M340 120 q8 -6 16 -3" stroke="#3A2E2A" stroke-width="6" fill="none" stroke-linecap="round"/>
+
+  <!-- 발 (몸통 뒤에 깔림) -->
+  <ellipse cx="188" cy="424" rx="17" ry="11" fill="#FFFDF7" stroke="#3A2E2A" stroke-width="7"/>
+  <ellipse cx="258" cy="424" rx="17" ry="11" fill="#FFFDF7" stroke="#3A2E2A" stroke-width="7"/>
+
+  <!-- 몸통(=얼굴) -->
+  <circle cx="225" cy="315" r="105" fill="#FFFDF7" stroke="#3A2E2A" stroke-width="8"/>
+
+  <!-- 가이드 모자 -->
+  <path d="M140 268 Q225 158 310 268 Z"
+        fill="#E8442E" stroke="#3A2E2A" stroke-width="8" stroke-linejoin="round"/>
+  <circle cx="225" cy="207" r="10" fill="#E8442E" stroke="#3A2E2A" stroke-width="6"/>
+
+  <!-- 얼굴 -->
+  <circle cx="192" cy="298" r="9" fill="#3A2E2A"/>
+  <circle cx="258" cy="298" r="9" fill="#3A2E2A"/>
+  <path d="M212 322 q13 12 26 0" stroke="#3A2E2A" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <ellipse cx="163" cy="322" rx="13" ry="8" fill="#F7A38E" opacity="0.75"/>
+  <ellipse cx="287" cy="322" rx="13" ry="8" fill="#F7A38E" opacity="0.75"/>
+
+  <!-- 왼팔 (인사) -->
+  <path d="M148 340 Q120 330 106 312" stroke="#3A2E2A" stroke-width="28" fill="none" stroke-linecap="round"/>
+  <path d="M148 340 Q120 330 106 312" stroke="#FFFDF7" stroke-width="15" fill="none" stroke-linecap="round"/>
+  <circle cx="103" cy="309" r="15" fill="#FFFDF7" stroke="#3A2E2A" stroke-width="7"/>
+
+  <!-- 오른팔 (깃대 잡기) -->
+  <path d="M305 330 Q350 315 372 296" stroke="#3A2E2A" stroke-width="30" fill="none" stroke-linecap="round"/>
+  <path d="M305 330 Q350 315 372 296" stroke="#FFFDF7" stroke-width="16" fill="none" stroke-linecap="round"/>
+  <circle cx="378" cy="294" r="17" fill="#FFFDF7" stroke="#3A2E2A" stroke-width="7"/>
+</svg>
