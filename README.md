@@ -191,6 +191,40 @@ Cloudflare 무료 임시 터널로 `https://????.trycloudflare.com` 공개 주�
   수집을 실행해 무료 API 한도를 쓸 수 있다
 - 상태는 하나를 같이 본다 (누가 수집하든 모두 같은 보드가 보인다)
 
+## 최펄럭 채널 — 즐겨찾기 기반 코스 브리핑 (별도 흐름)
+
+두 번째 스레드 채널(`파워J 가이드 최펄럭`)용 도구다. 위의 패션 파이프라인과는
+독립적으로 돈다. 네이버 지도 즐겨찾기 공유 폴더 3개(카페·식당·스팟)를 읽어
+코스 슬롯에 배정하고, 게시물 초안까지 뽑는다.
+
+**코스에는 즐겨찾기에 있는 장소만 들어간다.** 채널의 신뢰 기반이
+"큐레이터가 실제 저장해둔 곳"이라서, 코드가 후보를 지어내지 않는다.
+
+```bash
+python tools/pulluk_course.py --list                  # 등록된 지역
+python tools/pulluk_course.py --region paju           # 코스 초안 출력
+python tools/pulluk_course.py --region ganghwa --refresh --out drafts/ganghwa.md
+python tools/pulluk_favorites.py --addr 성수          # 즐겨찾기 목록만 훑기
+```
+
+동작:
+
+1. 즐겨찾기 수집 → `.cache/pulluk_favorites.json`에 캐시. 두 번째 실행부터는
+   캐시로 돌아 네트워크가 막힌 자리에서도 초안이 나온다 (`--refresh`로 재수집)
+2. 지역 필터 — 주소 키워드 **또는** 중심 반경. 근교는 주소 표기가 제각각이라
+   둘 중 하나만 걸려도 후보로 본다
+3. 슬롯 배정 — 점심 / 실내 문화 앵커 / 대형 카페 / 실내 쇼핑 / 저녁.
+   공원·수목원 같은 야외 분류는 실내 코스에서 자동으로 빠진다
+4. 동선 — 되돌아가는 구간에 벌점을 매겨(`BACKTRACK_WEIGHT`) 한 방향으로
+   꿰이는 조합을 고른다. 채널 원칙이라 정렬이 아니라 비용 함수로 강제한다
+5. 출력 — 본문 초안(확정 말투 템플릿) + 답글1(주소·지도링크) + 답글2(투어지 접수)
+   + 답사 작업표
+
+한 줄 코멘트와 실전 팁은 `___`로 비워 둔다. 즐겨찾기가 주지 않는 정보라
+지어내지 않는다. 후보가 없는 슬롯도 숨기지 않고 빈 칸으로 드러낸다.
+
+지역을 늘리려면 `src/willy/pulluk/regions.py`의 `REGIONS`에 한 줄 추가한다.
+
 ## 테스트
 
 ```bash
@@ -222,6 +256,8 @@ pytest
 - 초기 스펙: `docs/superpowers/specs/2026-07-31-tomorrow-outfit-pipeline-design.md`
 - 초기 구현 계획: `docs/superpowers/plans/2026-07-31-tomorrow-outfit-pipeline.md`
 - 경량화 설계: `docs/superpowers/specs/2026-08-03-lightweight-pipeline-design.md`
+- 최펄럭 채널 설계: `docs/superpowers/specs/2026-08-07-pulluk-channel-design.md`
+- 실내 드라이브 코스 기획: `docs/superpowers/specs/2026-08-08-pulluk-indoor-drive-course-plan.md`
 
 초기 문서는 주간 14칸·2단계 컨펌 시절 기준이라 현재 흐름과 다르다.
 현재 동작은 이 README와 테스트(`tests/`, 233개)가 기준이다.

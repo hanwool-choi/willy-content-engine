@@ -14,3 +14,5 @@ archive/
 .claude/launch.json
 .demo_cache/
 site/
+.cache/
+drafts/
