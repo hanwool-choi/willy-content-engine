@@ -164,11 +164,18 @@ def generate(out_path: Path = OUT_JS) -> dict:
     ai_picks = {}
     if AI_PICKS.exists():
         ai_picks = json.loads(AI_PICKS.read_text(encoding="utf-8"))
+    try:
+        import pulluk_popups
+
+        popups = pulluk_popups.collect()
+    except Exception:
+        popups = []
     data = {
         "generatedAt": datetime.now(KST).strftime("%Y-%m-%d %H:%M KST"),
         "places": places,
         "regions": regions,
         "aiPicks": ai_picks,
+        "popups": popups,
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(

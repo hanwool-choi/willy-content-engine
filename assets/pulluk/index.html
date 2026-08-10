@@ -171,6 +171,12 @@
     background: var(--signal); color: #fff; border-radius: 5px;
     padding: 2px 7px; margin-left: 7px; vertical-align: 2px;
   }
+  .poptag {
+    display: inline-block; font-family: var(--disp); font-size: 11.5px; letter-spacing: .06em;
+    background: var(--yellow); color: var(--ink); border: 1.5px solid var(--ink); border-radius: 5px;
+    padding: 1px 7px; margin-left: 6px; vertical-align: 2px; white-space: nowrap;
+  }
+  .mapmark.aim { background: var(--signal); }
   .stopcard .addr { font-size: 13px; color: var(--muted); }
   .stopcard .note { font-size: 13px; color: #A03323; margin-top: 5px; }
   .leg {
@@ -380,29 +386,57 @@
     });
 
     const picks = (D.aiPicks[region.name] || []).slice();
+    // 이 동네에서 지금 하는(또는 곧 여는) 팝업 — 종료일 지난 것은 제외
+    const now = new Date();
+    const today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+    const pops = (D.popups || []).filter(function (p) {
+      return p.close >= today && havKm(region.lat, region.lon, p.lat, p.lon) <= region.radius + 0.6;
+    });
+
     const slots = SLOTS[purpose][length].slice();
-    const used = new Set(), usedAI = new Set();
+    const used = new Set(), usedAI = new Set(), usedPop = new Set();
     const stops = [];
     let cur = null, mealIdx = 0, aiInserted = false;
 
+    function popStop(p, label) {
+      usedPop.add(p);
+      const leg = cur ? havKm(cur.lat, cur.lon, p.lat, p.lon) : null;
+      stops.push({
+        slot: label, ai: true, popup: true, name: p.title,
+        addr: p.addr + (p.detail ? ' · ' + p.detail : ''),
+        note: (p.status === 'READY' ? fmtDate(p.open) + ' 오픈, ' : '') + fmtDate(p.close) + '까지',
+        ptag: '~' + fmtDate(p.close), url: p.url,
+        lat: p.lat, lon: p.lon, leg: leg, cat: '스팟'
+      });
+      cur = p;
+    }
+
     slots.forEach(function (cat, slotIdx) {
       let place = pickNear(pool[cat] || [], cur, used);
-      let ai = null;
+      let ai = null, pop = null;
+      const freePops = pops.filter(function (p) { return !usedPop.has(p); });
 
-      // 즐겨찾기에 해당 카테고리가 없으면 AI 후보로 채운다
       if (!place) {
-        ai = picks.find(function (k) { return k.cat === cat && !usedAI.has(k); }) || null;
+        // 즐겨찾기에 해당 카테고리가 없으면 팝업 → AI 후보 순으로 채운다
+        if (cat === '스팟' && useAI && freePops.length) pop = freePops[Math.floor(Math.random() * freePops.length)];
+        else ai = picks.find(function (k) { return k.cat === cat && !usedAI.has(k); }) || null;
       } else if (useAI && !aiInserted && slotIdx > 0 && cat === '스팟') {
-        // 스팟 슬롯 하나만 확률적으로 AI 후보로 교체.
+        // 스팟 슬롯 하나만 확률적으로 교체. 팝업이 있으면 팝업 우선.
         // 첫 정거장은 동선의 기준점이라 즐겨찾기 장소를 유지한다.
-        const cand = picks.find(function (k) { return k.cat === cat && !usedAI.has(k); });
-        if (cand && Math.random() < 0.5) { ai = cand; place = null; }
+        if (freePops.length && Math.random() < 0.6) { pop = freePops[Math.floor(Math.random() * freePops.length)]; place = null; }
+        else {
+          const cand = picks.find(function (k) { return k.cat === cat && !usedAI.has(k); });
+          if (cand && Math.random() < 0.5) { ai = cand; place = null; }
+        }
       }
 
       let label = SLOT_LABEL[cat][0];
       if (cat === '식당') { label = SLOT_LABEL['식당'][Math.min(mealIdx, 1)]; mealIdx++; }
 
-      if (ai) {
+      if (pop) {
+        aiInserted = true;
+        popStop(pop, label);
+      } else if (ai) {
         usedAI.add(ai); aiInserted = true;
         stops.push({ slot: label, ai: true, name: ai.name, addr: '', note: ai.note, cat: cat });
         // AI 후보는 좌표가 없으므로 현재 위치를 유지한다
@@ -418,7 +452,14 @@
     });
 
     const rest = picks.filter(function (k) { return !usedAI.has(k); });
-    return { region: region, purpose: purpose, length: length, stops: stops, restPicks: rest };
+    const restPops = pops.filter(function (p) { return !usedPop.has(p); }).slice(0, 6);
+    return { region: region, purpose: purpose, length: length, stops: stops, restPicks: rest, restPops: restPops };
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return '';
+    const p = iso.split('-');
+    return (+p[1]) + '/' + (+p[2]);
   }
 
   function fmtLeg(km) {
@@ -442,8 +483,9 @@
         '<span class="marker">' + (i + 1) + '</span>' +
         '<div class="stopcard">' +
           '<div class="slot">' + s.slot + '</div>' +
-          '<div class="name"><a href="' + naverUrl(s) + '" target="_blank" rel="noopener">' + s.name + '</a>' +
-            (s.ai ? '<span class="aitag">AI 추천</span>' : '') + '</div>' +
+          '<div class="name"><a href="' + (s.url || naverUrl(s)) + '" target="_blank" rel="noopener">' + s.name + '</a>' +
+            (s.ai ? '<span class="aitag">AI 추천</span>' : '') +
+            (s.popup ? '<span class="poptag">팝업 ' + s.ptag + '</span>' : '') + '</div>' +
           (s.addr ? '<div class="addr">' + s.addr + '</div>' : '') +
           (s.ai ? '<div class="note">' + (s.note || '') + ' — 게시 전 확인 필수</div>' : '') +
         '</div>' +
@@ -460,6 +502,15 @@
       p.className = 'altpicks';
       p.innerHTML = '<b>다른 AI 후보:</b> ' + course.restPicks.map(function (k) {
         return '<a href="' + naverUrl(k) + '" target="_blank" rel="noopener">' + k.name + '(' + k.cat + ')</a>';
+      }).join(' · ');
+      res.appendChild(p);
+    }
+
+    if (course.restPops.length) {
+      const p = document.createElement('p');
+      p.className = 'altpicks';
+      p.innerHTML = '<b>이 동네 팝업:</b> ' + course.restPops.map(function (k) {
+        return '<a href="' + k.url + '" target="_blank" rel="noopener">' + k.title + ' (~' + fmtDate(k.close) + ')</a>';
       }).join(' · ');
       res.appendChild(p);
     }
@@ -499,7 +550,7 @@
     stops.forEach(function (s, i) {
       if (!s.lat) return;
       L.marker([s.lat, s.lon], {
-        icon: L.divIcon({ className: '', html: '<div class="mapmark">' + (i + 1) + '</div>', iconSize: [28, 28], iconAnchor: [14, 14] })
+        icon: L.divIcon({ className: '', html: '<div class="mapmark' + (s.ai ? ' aim' : '') + '">' + (i + 1) + '</div>', iconSize: [28, 28], iconAnchor: [14, 14] })
       }).addTo(m).bindPopup('<b>' + s.name + '</b><br>' + s.slot);
     });
     const line = L.polyline(pts.map(function (s) { return [s.lat, s.lon]; }), {
@@ -514,9 +565,11 @@
     const lines = course.stops.map(function (s, i) {
       const dong = s.ai ? '' : dongOf(s.addr);
       const head = (i + 1) + '. 🚩' + s.name + (dong ? ' (' + dong + ')' : '');
-      const body = s.ai
-        ? (s.note || '') + ' (AI 추천 — 게시 전 확인 필수)'
-        : '[한 줄 소개 + 실전 팁(시그니처 메뉴·주차·웨이팅·품절 시간) 직접 채우기]';
+      const body = s.popup
+        ? s.note + ' 여는 팝업. ' + '[한 줄 소개 직접 채우기] (AI 추천 팝업 — 게시 전 확인 필수)'
+        : s.ai
+          ? (s.note || '') + ' (AI 추천 — 게시 전 확인 필수)'
+          : '[한 줄 소개 + 실전 팁(시그니처 메뉴·주차·웨이팅·품절 시간) 직접 채우기]';
       return head + '\n' + body;
     });
     return '목적지 정해지면 코스부터 짜는 파워J가\n'
