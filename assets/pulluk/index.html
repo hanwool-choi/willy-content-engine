@@ -298,6 +298,14 @@
         </span>
       </label>
     </div>
+    <div class="field">
+      <label class="check">
+        <input type="checkbox" id="parkOnly">
+        <span>🚗 주차 되는 곳만
+          <small>주차장이 있거나 주차 안내가 확인된 장소만 코스에 넣습니다 (주차 정보는 매일 수집 중이라 후보가 적을 수 있어요)</small>
+        </span>
+      </label>
+    </div>
     <button class="go" id="go">🚩 코스 뽑기</button>
     <button class="redo" id="redo" hidden>같은 조건으로 다시 뽑기</button>
     <p class="railfoot">코스에는 즐겨찾기 장소만 들어갑니다. AI 추천 장소는 게시 전 영업·위치 확인이 필요합니다.</p>
@@ -406,14 +414,17 @@
     const region = D.regions[+regionSel.value];
     const purpose = segVal('purpose'), length = segVal('length');
     const useAI = document.getElementById('aiMix').checked;
+    const parkOnly = document.getElementById('parkOnly').checked;
 
     const pool = {};
     D.places.forEach(function (p) {
       if (havKm(region.lat, region.lon, p.lat, p.lon) > region.radius) return;
+      if (parkOnly && !(p.d && p.d.pk === 1)) return;
       (pool[p.cat] = pool[p.cat] || []).push(p);
     });
 
-    const picks = (D.aiPicks[region.name] || []).slice();
+    let picks = (D.aiPicks[region.name] || []).slice();
+    if (parkOnly) picks = picks.filter(function (k) { return k.parking === true; });
     // 이 동네에서 지금 하는(또는 곧 여는) 팝업 — 종료일 지난 것은 제외
     const now = new Date();
     const today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
@@ -468,7 +479,7 @@
     const rest = picks.filter(function (k) { return !usedAI.has(k); });
     // 팝업은 코스에 넣지 않는다 — 별도 [팝업 추천] 섹션에서 보여준다
     pops.sort(function (a, b) { return (a.close || '').localeCompare(b.close || ''); });
-    return { region: region, purpose: purpose, length: length, stops: stops, restPicks: rest, pops: pops.slice(0, 6) };
+    return { region: region, purpose: purpose, length: length, parkOnly: parkOnly, stops: stops, restPicks: rest, pops: pops.slice(0, 6) };
   }
 
   function fmtDate(iso) {
@@ -485,9 +496,23 @@
 
   function render(course) {
     lastCourse = course;
-    document.getElementById('title').textContent = '🚩 ' + course.region.name + ' · ' + course.purpose + ' ' + course.length;
-    document.getElementById('subtitle').textContent =
-      '즐겨찾기 ' + course.region.count + '곳 중에서 뽑은 동선입니다. 마음에 안 들면 다시 뽑으세요.';
+    document.getElementById('title').textContent = '🚩 ' + course.region.name + ' · ' + course.purpose + ' ' + course.length + (course.parkOnly ? ' · 🚗' : '');
+    document.getElementById('subtitle').textContent = course.parkOnly
+      ? '주차 확인된 장소만으로 뽑은 동선입니다. 마음에 안 들면 다시 뽑으세요.'
+      : '즐겨찾기 ' + course.region.count + '곳 중에서 뽑은 동선입니다. 마음에 안 들면 다시 뽑으세요.';
+
+    if (!course.stops.length) {
+      const res0 = document.getElementById('result');
+      res0.innerHTML = '<div class="empty"><span class="bigflag">🚗</span>' +
+        (course.parkOnly
+          ? '이 지역엔 아직 주차 확인된 장소가 부족합니다.<br>주차 정보는 매일 자동 수집 중이니 며칠 뒤 다시 시도하거나, 옵션을 끄고 뽑아보세요.'
+          : '조건에 맞는 장소가 없습니다. 옵션을 바꿔보세요.') + '</div>';
+      document.getElementById('mapWrap').hidden = true;
+      document.getElementById('draftWrap').hidden = true;
+      renderPops(course.pops);
+      document.getElementById('redo').hidden = false;
+      return;
+    }
 
     const ol = document.createElement('ol');
     ol.className = 'route';
@@ -577,6 +602,7 @@
     if (d.r) bits.push('리뷰 ' + d.r.toLocaleString());
     if (d.s) bits.push('★' + d.s);
     if (d.h) bits.push(d.h);
+    if (d.pk === 1) bits.push('🚗 주차');
     return bits.join(' · ');
   }
 
@@ -605,7 +631,10 @@
       } else {
         const d = s.d || {};
         const intro = [d.c, d.r ? '리뷰 ' + d.r.toLocaleString() + '개' : null].filter(Boolean).join(' · ');
-        const tip = d.h ? ' (' + d.h.replace('에 ', ' ') + ' 참고)' : '';
+        const tipBits = [];
+        if (d.h) tipBits.push(d.h.replace('에 ', ' ') + ' 참고');
+        if (d.pk === 1) tipBits.push(d.pkt ? '주차: ' + d.pkt : '주차 가능');
+        const tip = tipBits.length ? ' (' + tipBits.join(' · ') + ')' : '';
         body = (intro ? intro + '. ' : '') + '[한 줄 경험담 + 팁 직접 채우기]' + tip;
       }
       return head + '\n' + body;

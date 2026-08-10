@@ -228,11 +228,68 @@ def enrich_places(places: list[dict], limit: int = 150, delay: float = 0.25) -> 
             p["d"] = d
 
 
-def generate(out_path: Path = OUT_JS, enrich_limit: int = 150) -> dict:
+# ── 주차 정보 보강 (모바일 플레이스 페이지) ─────────────────────────
+# conveniences(주차/발렛)와 InformationParking.description으로 판정한다.
+# 페이지가 커서(300~550KB) 하루 상한을 낮게 잡고 클러스터 안 장소부터 채운다.
+MPLACE_URL = "https://m.place.naver.com/place/{sid}/home"
+MOBILE_UA = {
+    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1"
+}
+_NEG = re.compile(r"불가|없습니|없음|미지원|어렵")
+
+
+def fetch_parking(client: httpx.Client, sid) -> dict | None:
+    """{'pk': 0|1, 'pkt': 안내문?} — 판정 불가(차단 등)면 None."""
+    r = client.get(MPLACE_URL.format(sid=sid))
+    if r.status_code != 200:
+        return None
+    t = r.text
+    out: dict = {}
+    m = re.search(r'"InformationParking","description":"([^"]{2,120})', t)
+    pkt = m.group(1) if m else None
+    # 주의: '"parking":"주차"' 같은 문자열은 모든 페이지에 있는 i18n 라벨이라
+    # 판정 근거로 쓰면 안 된다 (2026-08-10 오탐 사고). conveniences 배열과
+    # InformationParking 안내문만 근거로 삼는다.
+    conv_park = bool(re.search(r'"conveniences":\[[^\]]*(?:주차|발렛)', t))
+    if conv_park or (pkt and not _NEG.search(pkt)):
+        out["pk"] = 1
+    else:
+        out["pk"] = 0
+    if pkt:
+        out["pkt"] = pkt[:60]
+    return out
+
+
+def enrich_parking(places: list[dict], regions: list[dict], limit: int = 100, delay: float = 1.0) -> None:
+    def in_cluster(p):
+        return any(haversine_km(r["lat"], r["lon"], p["lat"], p["lon"]) <= r["radius"] for r in regions)
+
+    todo = [p for p in places if p.get("sid") and "pk" not in (p.get("d") or {})]
+    todo.sort(key=lambda p: 0 if in_cluster(p) else 1)
+    if not todo:
+        return
+    with httpx.Client(headers=MOBILE_UA, timeout=25, follow_redirects=True) as c:
+        for p in todo[:limit]:
+            try:
+                info = fetch_parking(c, p["sid"])
+                if info:
+                    d = p.get("d") or {}
+                    d.update(info)
+                    p["d"] = d
+            except Exception:
+                pass
+            time.sleep(delay)
+
+
+def generate(out_path: Path = OUT_JS, enrich_limit: int = 150, parking_limit: int = 100) -> dict:
     places = build_places()
     regions = cluster_regions(places)
     try:
         enrich_places(places, limit=enrich_limit)
+    except Exception:
+        pass
+    try:
+        enrich_parking(places, regions, limit=parking_limit)
     except Exception:
         pass
     ai_picks = {}
@@ -263,6 +320,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--print", action="store_true", help="클러스터 미리보기만")
     ap.add_argument("--enrich-limit", type=int, default=150, help="이번 실행에서 새로 보강할 장소 수")
+    ap.add_argument("--parking-limit", type=int, default=100, help="이번 실행에서 주차 확인할 장소 수")
     args = ap.parse_args()
     if args.print:
         places = build_places()
@@ -270,9 +328,10 @@ def main() -> None:
         for r in cluster_regions(places):
             print(f"  {r['count']:3d}곳  {r['name']}  {r['cats']}")
         return
-    data = generate(enrich_limit=args.enrich_limit)
+    data = generate(enrich_limit=args.enrich_limit, parking_limit=args.parking_limit)
     enriched = sum(1 for p in data["places"] if p.get("d"))
-    print(f"data.js 생성: 장소 {len(data['places'])} / 지역 {len(data['regions'])} / 설명 {enriched} / 팝업 {len(data.get('popups') or [])}")
+    parked = sum(1 for p in data["places"] if "pk" in (p.get("d") or {}))
+    print(f"data.js 생성: 장소 {len(data['places'])} / 지역 {len(data['regions'])} / 설명 {enriched} / 주차확인 {parked} / 팝업 {len(data.get('popups') or [])}")
 
 
 if __name__ == "__main__":
