@@ -1,0 +1,54 @@
+name: 펄럭 코스 스튜디오 게시
+
+# 데일리 보드와 완전히 분리된 가벼운 워크플로.
+# 즐겨찾기 데이터만 새로 받아 /pulluk 을 갱신한다 (1분 내외).
+
+on:
+  schedule:
+    # 21:20 UTC = 06:20 KST. 정시(:00)는 GitHub 크론이 밀리므로 피한다.
+    - cron: "20 21 * * *"
+  push:
+    branches: [main]
+    paths:
+      - "assets/pulluk/**"
+      - "tools/pulluk_favorites.py"
+      - "tools/pulluk_site_data.py"
+      - ".github/workflows/pulluk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# 데일리 보드 게시와 같은 그룹으로 묶어 gh-pages 동시 푸시 충돌을 막는다.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 의존성 설치
+        run: pip install httpx truststore
+
+      # 실패해도 커밋된 data.js 스냅샷으로 게시를 계속한다.
+      - name: 즐겨찾기 데이터 갱신
+        continue-on-error: true
+        run: python tools/pulluk_site_data.py
+
+      # keep_files 로 루트(데일리 보드, daily.yml 소유)를 지우지 않는다.
+      - name: gh-pages /pulluk 으로 게시
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: assets/pulluk
+          destination_dir: pulluk
+          publish_branch: gh-pages
+          keep_files: true
+          commit_message: "publish: 펄럭 코스 스튜디오"
