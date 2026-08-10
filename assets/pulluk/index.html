@@ -10,6 +10,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Do+Hyeon&display=swap" rel="stylesheet">
 <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
 <style>
   :root {
     --flag: #2447D6;      /* 깃발청 */
@@ -161,6 +163,9 @@
   }
   .stop.ai .stopcard .slot { color: var(--signal); }
   .stopcard .name { font-size: 17.5px; font-weight: 700; margin: 1px 0 2px; }
+  .stopcard .name a { color: inherit; text-decoration: none; border-bottom: 2px solid var(--yellow); }
+  .stopcard .name a:hover { border-bottom-color: var(--flag); }
+  .stopcard .name a::after { content: " ↗"; font-size: 12px; color: var(--flag-deep); }
   .aitag {
     display: inline-block; font-family: var(--disp); font-size: 11.5px; letter-spacing: .06em;
     background: var(--signal); color: #fff; border-radius: 5px;
@@ -176,6 +181,24 @@
 
   .altpicks { margin: 6px 0 0 56px; font-size: 13px; color: var(--muted); }
   .altpicks b { color: var(--signal); font-weight: 700; }
+  .altpicks a { color: var(--muted); }
+  .altpicks a:hover { color: var(--ink); }
+
+  /* ── 동선 지도 ─────────────────────────────── */
+  .mapwrap { margin-top: 26px; }
+  .mapwrap h3 { font-family: var(--disp); font-weight: 400; font-size: 20px; margin-bottom: 10px; }
+  #map {
+    height: 340px; border: var(--line); border-radius: 12px;
+    box-shadow: 4px 4px 0 rgba(34,29,22,.12); background: var(--card);
+  }
+  .mapmark {
+    display: grid; place-items: center;
+    width: 28px; height: 28px;
+    background: var(--flag); color: #fff;
+    font-family: var(--disp); font-size: 14px;
+    border: 2px solid var(--ink); border-radius: 50% 50% 50% 4px;
+  }
+  .mapnote { font-size: 12px; color: var(--muted); margin-top: 6px; }
 
   /* ── 초안 패널 ──────────────────────────────── */
   .draft { margin-top: 34px; }
@@ -262,6 +285,12 @@
         지역 고르고 <b>코스 뽑기</b>를 누르면<br>여기에 도보 동선이 그려집니다.
       </div>
     </div>
+
+    <section class="mapwrap" id="mapWrap" hidden>
+      <h3>동선 지도</h3>
+      <div id="map"></div>
+      <p class="mapnote">즐겨찾기 장소만 표시됩니다 — AI 추천 장소는 좌표 확정 전이라 지도에서 제외. 배경지도 © OpenStreetMap</p>
+    </section>
 
     <section class="draft" id="draftWrap" hidden>
       <h3>게시 초안 <span class="count" id="charCount"></span></h3>
@@ -380,7 +409,10 @@
       } else if (place) {
         used.add(place);
         const leg = cur ? havKm(cur.lat, cur.lon, place.lat, place.lon) : null;
-        stops.push({ slot: label, ai: false, name: place.name, addr: place.addr, leg: leg, cat: cat });
+        stops.push({
+          slot: label, ai: false, name: place.name, addr: place.addr, leg: leg, cat: cat,
+          sid: place.sid, lat: place.lat, lon: place.lon
+        });
         cur = place;
       }
     });
@@ -410,7 +442,8 @@
         '<span class="marker">' + (i + 1) + '</span>' +
         '<div class="stopcard">' +
           '<div class="slot">' + s.slot + '</div>' +
-          '<div class="name">' + s.name + (s.ai ? '<span class="aitag">AI 추천</span>' : '') + '</div>' +
+          '<div class="name"><a href="' + naverUrl(s) + '" target="_blank" rel="noopener">' + s.name + '</a>' +
+            (s.ai ? '<span class="aitag">AI 추천</span>' : '') + '</div>' +
           (s.addr ? '<div class="addr">' + s.addr + '</div>' : '') +
           (s.ai ? '<div class="note">' + (s.note || '') + ' — 게시 전 확인 필수</div>' : '') +
         '</div>' +
@@ -425,9 +458,13 @@
     if (course.restPicks.length) {
       const p = document.createElement('p');
       p.className = 'altpicks';
-      p.innerHTML = '<b>다른 AI 후보:</b> ' + course.restPicks.map(function (k) { return k.name + '(' + k.cat + ')'; }).join(' · ');
+      p.innerHTML = '<b>다른 AI 후보:</b> ' + course.restPicks.map(function (k) {
+        return '<a href="' + naverUrl(k) + '" target="_blank" rel="noopener">' + k.name + '(' + k.cat + ')</a>';
+      }).join(' · ');
       res.appendChild(p);
     }
+
+    drawMap(course.stops);
 
     document.getElementById('draftWrap').hidden = false;
     const ta = document.getElementById('draftText');
@@ -436,21 +473,57 @@
     document.getElementById('redo').hidden = false;
   }
 
+  function naverUrl(s) {
+    return s.sid
+      ? 'https://map.naver.com/p/entry/place/' + s.sid
+      : 'https://map.naver.com/p/search/' + encodeURIComponent(s.name);
+  }
+
+  // 주소에서 동네 느낌의 토큰을 뽑는다 ("서울 성동구 성수동1가 668-79" → "성수동")
+  function dongOf(addr) {
+    const p = (addr || '').split(' ');
+    let d = p[2] || p[1] || '';
+    return d.replace(/\d.*$/, '');
+  }
+
+  function drawMap(stops) {
+    const wrap = document.getElementById('mapWrap');
+    const pts = stops.filter(function (s) { return s.lat && s.lon; });
+    if (!window.L || pts.length < 2) { wrap.hidden = true; return; }
+    wrap.hidden = false;
+    if (window._plkMap) { window._plkMap.remove(); window._plkMap = null; }
+    const m = L.map('map', { scrollWheelZoom: false });
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
+    }).addTo(m);
+    stops.forEach(function (s, i) {
+      if (!s.lat) return;
+      L.marker([s.lat, s.lon], {
+        icon: L.divIcon({ className: '', html: '<div class="mapmark">' + (i + 1) + '</div>', iconSize: [28, 28], iconAnchor: [14, 14] })
+      }).addTo(m).bindPopup('<b>' + s.name + '</b><br>' + s.slot);
+    });
+    const line = L.polyline(pts.map(function (s) { return [s.lat, s.lon]; }), {
+      color: '#2447D6', weight: 3, dashArray: '6 8'
+    }).addTo(m);
+    m.fitBounds(line.getBounds().pad(0.25));
+    window._plkMap = m;
+    setTimeout(function () { m.invalidateSize(); }, 60);
+  }
+
   function draftText(course) {
-    const ACT = {
-      '점심': " 가서 점심.", '저녁': " 가서 저녁.", '커피': "에서 커피 한 잔.",
-      '구경': " 구경.", '마무리 한 잔': "에서 마무리 한 잔 하고 귀가."
-    };
     const lines = course.stops.map(function (s, i) {
-      let t = (i + 1) + ". '" + s.name + "'" + (ACT[s.slot] || '.');
-      if (s.ai) t += ' (AI 추천 장소 — 게시 전 확인)';
-      return t;
+      const dong = s.ai ? '' : dongOf(s.addr);
+      const head = (i + 1) + '. 🚩' + s.name + (dong ? ' (' + dong + ')' : '');
+      const body = s.ai
+        ? (s.note || '') + ' (AI 추천 — 게시 전 확인 필수)'
+        : '[한 줄 소개 + 실전 팁(시그니처 메뉴·주차·웨이팅·품절 시간) 직접 채우기]';
+      return head + '\n' + body;
     });
     return '목적지 정해지면 코스부터 짜는 파워J가\n'
       + HOOK[course.purpose] + ' ' + course.region.name + ' 코스 딱 짜드림.\n'
       + '(광고 협찬 절대 아님)\n\n'
-      + lines.join('\n')
-      + '\n\n앞으로 짜줄 코스가 무궁무진 너무 많다.\n'
+      + lines.join('\n\n')
+      + '\n\n앞으로 짜줄 코스 한 보따리 쌓여있다.\n'
       + '(+) 팔로우 해두면 이제 주말에 뭐할지 고민할일 없음.';
   }
 
