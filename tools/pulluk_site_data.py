@@ -142,9 +142,22 @@ def cluster_regions(places: list[dict]) -> list[dict]:
                     toks[" ".join(parts[:2])] += 1
             name = toks.most_common(1)[0][0] if toks else "미분류"
         cats = Counter(p["cat"] for p in members)
+        # 시/도 (드롭다운 1단계) — 구성 장소 주소의 최빈 첫 토큰
+        SIDO_SHORT = {
+            "서울특별시": "서울", "경기도": "경기", "인천광역시": "인천", "부산광역시": "부산",
+            "대구광역시": "대구", "대전광역시": "대전", "광주광역시": "광주", "울산광역시": "울산",
+            "세종특별자치시": "세종", "강원특별자치도": "강원", "강원도": "강원",
+            "충청북도": "충북", "충청남도": "충남", "전라북도": "전북", "전북특별자치도": "전북",
+            "전라남도": "전남", "경상북도": "경북", "경상남도": "경남", "제주특별자치도": "제주",
+        }
+        sido_tok = Counter(
+            p["addr"].split(" ")[0] for p in members if p.get("addr")
+        ).most_common(1)
+        sido = SIDO_SHORT.get(sido_tok[0][0], sido_tok[0][0]) if sido_tok else "기타"
         regions.append(
             {
                 "name": name,
+                "sido": sido,
                 "lat": round(clat, 5),
                 "lon": round(clon, 5),
                 "radius": RADIUS_KM,
