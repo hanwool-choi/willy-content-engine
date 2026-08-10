@@ -122,6 +122,28 @@ def build_pipeline(settings: Settings) -> Pipeline:
     )
 
 
+def copy_pulluk_studio(out_dir: Path) -> None:
+    """최펄럭 코스 스튜디오(/pulluk/)를 게시 폴더로 옮긴다.
+
+    데이터는 배포 시점에 즐겨찾기에서 새로 받아 갱신하고, 수집이
+    실패하면 커밋된 data.js 스냅샷을 그대로 쓴다. 어떤 경우에도
+    보드 게시를 막지 않는다.
+    """
+    src = PROJECT_ROOT / "assets" / "pulluk"
+    if not src.exists():
+        return
+    dest = out_dir / "pulluk"
+    shutil.copytree(src, dest, dirs_exist_ok=True)
+    try:
+        sys.path.insert(0, str(PROJECT_ROOT / "tools"))
+        from pulluk_site_data import generate
+
+        data = generate(dest / "data.js")
+        log.info("펄럭 데이터 갱신: 장소 %d곳", len(data["places"]))
+    except Exception:
+        log.exception("펄럭 데이터 갱신 실패 — 커밋된 스냅샷으로 게시합니다")
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
@@ -160,6 +182,7 @@ def main() -> None:
         ideas = []
 
     og_image = copy_og_image(PROJECT_ROOT / "assets", out_dir)
+    copy_pulluk_studio(out_dir)
     html = render_site(
         state, texts, datetime.now(KST), og_image=og_image, ideas=ideas
     )
