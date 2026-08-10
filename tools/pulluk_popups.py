@@ -142,12 +142,29 @@ def fetch_prev(client: httpx.Client) -> list[dict]:
         return []
 
 
+def fetch_local() -> list[dict]:
+    """저장소에 커밋된 data.js의 popups.
+
+    백필 시드가 배포 재생성 과정에서 유실되지 않도록 병합 소스에
+    포함한다 (커밋본이 gh-pages 게시본보다 최신일 수 있다)."""
+    try:
+        from pathlib import Path
+
+        txt = (Path(__file__).resolve().parents[1] / "assets" / "pulluk" / "data.js").read_text(encoding="utf-8")
+        data = json.loads(txt[txt.index("=") + 1 :].rstrip().rstrip(";"))
+        return data.get("popups") or []
+    except Exception:
+        return []
+
+
 def collect() -> list[dict]:
-    """오늘 수집분 + gh-pages 누적분 병합, 종료된 팝업 제거."""
+    """오늘 수집분 + 커밋본 + gh-pages 누적분 병합, 종료된 팝업 제거."""
     today = datetime.now(KST).strftime("%Y-%m-%d")
     merged: dict[int, dict] = {}
     with httpx.Client(headers=UA, timeout=30, follow_redirects=True) as c:
         for p in fetch_prev(c):
+            merged[p["id"]] = p
+        for p in fetch_local():
             merged[p["id"]] = p
         try:
             for p in fetch_today(c):

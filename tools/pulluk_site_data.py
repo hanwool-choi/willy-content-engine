@@ -16,7 +16,9 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
+import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -158,9 +160,81 @@ def cluster_regions(places: list[dict]) -> list[dict]:
     return sorted(best.values(), key=lambda r: -r["count"])
 
 
-def generate(out_path: Path = OUT_JS) -> dict:
+# ── 장소 설명 보강 (네이버 플레이스 요약 API) ──────────────────────
+# sid당 1.2KB짜리 요약에서 세부 업종·리뷰 수·평점·영업 힌트를 얻는다.
+# 이미 보강된 sid는 gh-pages/로컬 data.js에서 재사용하므로 매일 신규
+# 즐겨찾기 몇 건만 추가 요청된다.
+SUMMARY_URL = "https://map.naver.com/p/api/place/summary/{sid}"
+
+
+def load_prev_descs() -> dict:
+    descs: dict[str, dict] = {}
+    # 로컬 커밋본 → gh-pages 게시본 순으로 읽는다 (게시본이 최신일 수 있음)
+    for src in ("local", "remote"):
+        try:
+            if src == "local":
+                txt = OUT_JS.read_text(encoding="utf-8")
+            else:
+                import pulluk_popups
+
+                with httpx.Client(headers=UA, timeout=30) as c:
+                    txt = c.get(pulluk_popups.PREV_URL).text
+            data = json.loads(txt[txt.index("=") + 1 :].rstrip().rstrip(";"))
+            for p in data.get("places", []):
+                if p.get("sid") and p.get("d"):
+                    descs.setdefault(str(p["sid"]), p["d"])
+        except Exception:
+            pass
+    return descs
+
+
+def fetch_desc(client: httpx.Client, sid) -> dict | None:
+    r = client.get(SUMMARY_URL.format(sid=sid), headers={"Referer": "https://map.naver.com/"})
+    if r.status_code != 200:
+        return None
+    detail = (r.json().get("data") or {}).get("placeDetail") or {}
+    out: dict = {}
+    cat = ((detail.get("category") or {}).get("category") or "").strip()
+    if cat:
+        out["c"] = cat
+    vr = detail.get("visitorReviews") or {}
+    m = re.search(r"([\d,]+)", vr.get("displayText") or "")
+    if m:
+        out["r"] = int(m.group(1).replace(",", ""))
+    if vr.get("score"):
+        out["s"] = vr["score"]
+    hours = (detail.get("businessHours") or {}).get("description")
+    if hours:
+        out["h"] = hours
+    return out or None
+
+
+def enrich_places(places: list[dict], limit: int = 150, delay: float = 0.25) -> None:
+    descs = load_prev_descs()
+    todo = [p for p in places if p.get("sid") and str(p["sid"]) not in descs]
+    if todo:
+        with httpx.Client(headers=UA, timeout=15) as c:
+            for p in todo[:limit]:
+                try:
+                    d = fetch_desc(c, p["sid"])
+                    if d:
+                        descs[str(p["sid"])] = d
+                except Exception:
+                    pass
+                time.sleep(delay)
+    for p in places:
+        d = descs.get(str(p.get("sid")))
+        if d:
+            p["d"] = d
+
+
+def generate(out_path: Path = OUT_JS, enrich_limit: int = 150) -> dict:
     places = build_places()
     regions = cluster_regions(places)
+    try:
+        enrich_places(places, limit=enrich_limit)
+    except Exception:
+        pass
     ai_picks = {}
     if AI_PICKS.exists():
         ai_picks = json.loads(AI_PICKS.read_text(encoding="utf-8"))
@@ -188,6 +262,7 @@ def generate(out_path: Path = OUT_JS) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--print", action="store_true", help="클러스터 미리보기만")
+    ap.add_argument("--enrich-limit", type=int, default=150, help="이번 실행에서 새로 보강할 장소 수")
     args = ap.parse_args()
     if args.print:
         places = build_places()
@@ -195,8 +270,9 @@ def main() -> None:
         for r in cluster_regions(places):
             print(f"  {r['count']:3d}곳  {r['name']}  {r['cats']}")
         return
-    data = generate()
-    print(f"data.js 생성: 장소 {len(data['places'])} / 지역 {len(data['regions'])}")
+    data = generate(enrich_limit=args.enrich_limit)
+    enriched = sum(1 for p in data["places"] if p.get("d"))
+    print(f"data.js 생성: 장소 {len(data['places'])} / 지역 {len(data['regions'])} / 설명 {enriched} / 팝업 {len(data.get('popups') or [])}")
 
 
 if __name__ == "__main__":
