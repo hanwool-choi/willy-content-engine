@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>최윌리 옷장연구소 콘텐츠 플랫폼</title>
+<meta property="og:title" content="최윌리 옷장연구소 콘텐츠 플랫폼" />
+<meta property="og:type" content="website" />
+<meta property="og:description" content="매일 아침 8시, 내일 서울 날씨에 맞춘 코디 픽과 게시용 텍스트를 자동으로 정리합니다." />
+<meta property="og:url" content="https://hanwool-choi.github.io/willy-content-engine/" />
+<meta name="description" content="매일 아침 8시, 내일 서울 날씨에 맞춘 코디 픽과 게시용 텍스트를 자동으로 정리합니다." />
+<meta name="twitter:card" content="summary_large_image" />
+<meta property="og:image" content="https://hanwool-choi.github.io/willy-content-engine/og.png" />
+<meta name="twitter:image" content="https://hanwool-choi.github.io/willy-content-engine/og.png" />
+<style>
+  :root {
+    --paper:#f1f2ef; --card:#fbfbf9; --ink:#1a1b1e; --ink-soft:#5c5f66;
+    --line:#d8dad3; --accent:#4f6d48;
+    --serif:"RIDIBatang",Batang,"Noto Serif KR",serif;
+    --sans:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); font-size:14px; line-height:1.55; }
+  main { max-width:1060px; margin:0 auto; padding:28px 20px 80px; }
+  .lab { font-size:11px; letter-spacing:.35em; color:var(--ink-soft); }
+  h1 { font-family:var(--serif); font-size:clamp(28px,5vw,40px); font-weight:600;
+    margin:2px 0 0; }
+  h1 .q { color:var(--accent); }
+  h2 { font-family:var(--serif); font-weight:600; font-size:19px; margin:34px 0 4px;
+    display:flex; align-items:baseline; gap:10px; }
+  h2 .muted { font-family:var(--sans); font-size:12px; color:var(--ink-soft); }
+  .rule { height:1px; background:var(--line); margin-bottom:14px; }
+  .ticket { display:flex; align-items:center; gap:22px; flex-wrap:wrap;
+    margin:18px 0 0; padding:16px 22px; background:var(--card);
+    border:1px solid var(--line); border-left:6px solid var(--accent);
+    border-radius:8px; }
+  .ticket .date { font-family:var(--serif); font-size:22px; }
+  .ticket .temp { font-family:var(--serif); font-size:30px; }
+  .ticket .temp small { font-size:15px; color:var(--ink-soft); }
+  .ticket .cell { display:flex; flex-direction:column; }
+  .ticket .label { font-size:10px; letter-spacing:.22em; color:var(--ink-soft); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; }
+  .pool { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+  .card,.look,.text-card { background:var(--card); border:1px solid var(--line);
+    border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:8px; }
+  .card.is-warn { border-color:#9a6b15; }
+  .card header { display:flex; gap:8px; font-size:12px; align-items:baseline; }
+  .card header span { color:var(--ink-soft); }
+  .look { padding:7px; font-size:11px; position:relative; }
+  .look .src { position:absolute; top:11px; left:11px; z-index:1; font-size:10px;
+    background:#ffffffd9; padding:2px 6px; border-radius:3px; }
+  img { width:100%; aspect-ratio:3/4; object-fit:cover; border-radius:4px;
+    background:var(--paper); display:block; }
+  .noimg { width:100%; aspect-ratio:3/4; border-radius:4px; background:var(--paper);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:var(--ink-soft); font-size:12px; text-align:center; }
+  .badge { align-self:flex-start; font-size:11px; font-weight:700; padding:3px 8px;
+    border-radius:4px; }
+  .badge.warn { color:#9a6b15; background:#f6edd9; }
+  .badge.ai { color:#6b21a8; background:#f3e8ff; }
+  /* 탭과 접힘은 JS가 있을 때만 작동한다. 없으면 두 패널이 다 펼쳐진 채
+     남아야 Ctrl+F 검색과 링크 공유가 살아 있다. */
+  .tabs { display:none; gap:4px; margin:22px 0 0; border-bottom:1px solid var(--line); }
+  .js .tabs { display:flex; }
+  .tab { font:inherit; font-family:var(--serif); font-size:15px; cursor:pointer;
+    background:none; border:none; border-bottom:2px solid transparent;
+    padding:9px 14px; margin-bottom:-1px; color:var(--ink-soft); }
+  .tab:hover { color:var(--ink); }
+  .tab.is-active { color:var(--ink); border-bottom-color:var(--accent); }
+  .js .panel { display:none; }
+  .js .panel.is-active { display:block; }
+  .idea-group { font-family:var(--serif); font-weight:600; font-size:16px;
+    margin:26px 0 8px; display:flex; align-items:baseline; gap:8px; }
+  .idea-group .muted { font-family:var(--sans); font-size:12px; color:var(--ink-soft); }
+  .idea-list { background:var(--card); border:1px solid var(--line);
+    border-radius:8px; overflow:hidden; }
+  .idea-row { display:flex; flex-direction:column; gap:3px; padding:11px 14px;
+    text-decoration:none; color:inherit; border-top:1px solid var(--line); }
+  .idea-row:first-child { border-top:none; }
+  .idea-row:hover { background:var(--paper); }
+  .idea-title { font-size:15px; line-height:1.45; }
+  .idea-meta { font-size:12px; color:var(--ink-soft); }
+  .js .idea-list.is-collapsed .is-extra { display:none; }
+  .more { display:none; font:inherit; font-size:12px; cursor:pointer; margin-top:8px;
+    background:var(--card); border:1px solid var(--line); border-radius:6px;
+    padding:7px 14px; color:var(--ink-soft); }
+  .js .more { display:inline-block; }
+  .more:hover { border-color:var(--accent); color:var(--ink); }
+  .range { color:var(--accent); font-weight:600; font-size:12px; }
+  .tags,.meta { color:var(--ink-soft); font-size:12px; }
+  .meta b { color:var(--ink); }
+  .caveat { font-size:12px; color:#9a6b15; }
+  .src-link { font-size:11px; color:var(--accent); text-decoration:none; }
+  .src-link:hover { text-decoration:underline; }
+  .texts { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
+  .text-card .tone { font-weight:700; font-size:12px; letter-spacing:.08em; color:var(--accent); }
+  .text-card pre { margin:0; white-space:pre-wrap; word-break:break-word;
+    font-family:var(--sans); font-size:13px; line-height:1.6; background:var(--paper);
+    border-radius:6px; padding:12px; flex:1; }
+  .text-card button { align-self:flex-start; font:inherit; font-size:12px; cursor:pointer;
+    background:var(--card); border:1px solid var(--line); border-radius:6px; padding:6px 12px; }
+  .text-card button:hover { border-color:var(--accent); }
+  .empty { color:var(--ink-soft); padding:20px 0; }
+  .notice { margin-top:14px; padding:10px 14px; border-radius:8px; font-size:13px;
+    background:#f6edd9; color:#9a6b15; }
+  img.thumb { cursor:zoom-in; }
+  #lightbox { position:fixed; inset:0; z-index:50; background:#1a1b1ecc;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; padding:24px; cursor:zoom-out; }
+  #lightbox[hidden] { display:none; }
+  #lightbox img { max-width:min(92vw,640px); max-height:78vh; width:auto;
+    aspect-ratio:auto; object-fit:contain; border-radius:6px; background:#fff; }
+  #lightbox .lb-actions { display:flex; gap:10px; cursor:default; flex-wrap:wrap;
+    justify-content:center; }
+  #lightbox a, #lightbox button { font:inherit; font-size:13px; cursor:pointer;
+    background:var(--card); color:var(--ink); border:1px solid var(--line);
+    border-radius:6px; padding:8px 14px; text-decoration:none; }
+  #lightbox a:hover, #lightbox button:hover { border-color:var(--accent); }
+  #lightbox .hint { color:#fff; font-size:11px; opacity:.8; }
+  footer { margin-top:56px; padding-top:14px; border-top:1px solid var(--line);
+    font-size:11px; color:var(--ink-soft); line-height:1.8; }
+</style>
+</head>
+<body>
+<main>
+  <span class="lab">CHOI WILLY LAB · 옷장연구소</span>
+  <h1>내일 뭐입지<span class="q">?</span></h1>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab is-active" type="button" role="tab" data-panel="board">내일의 보드</button>
+    <button class="tab" type="button" role="tab" data-panel="ideas">콘텐츠 아이디어 보울</button>
+  </nav>
+
+  <section class="panel is-active" id="panel-board">
+  <section class="ticket">
+    <span class="date">08.11 (화)</span>
+    <span class="temp">33℃<small> / 25℃</small></span>
+    <span class="cell"><span class="label">하늘</span><b>구름많음</b></span>
+    <span class="cell"><span class="label">강수확률</span><b>20%</b></span>
+  </section>
+
+  
+
+  <h2>내일의 보드</h2>
+  <div class="rule"></div>
+  <div class="grid">
+      <div class="card">
+        <header><b>MEN</b><span>픽1 · 무신사</span></header>
+        <img class="thumb" src="https://image.msscdn.net/thumbnails/snap/images/2026/08/10/7bf714f5985e497faaf0fdcfa6fc5b9c.jpg?w=260" alt="musinsa_snap-6-b685381f" data-full="https://image.msscdn.net/thumbnails/snap/images/2026/08/10/7bf714f5985e497faaf0fdcfa6fc5b9c.jpg?w=260" data-link="https://www.musinsa.com/snap/1536145373107256815" data-name="musinsa_snap-6-b685381f" loading="lazy" referrerpolicy="no-referrer" />
+        
+        <span class="range">24~33℃ 적합</span>
+        <span class="tags">스포티 · 러닝룩 · 캐주얼</span>
+        
+        <a class="src-link" href="https://www.musinsa.com/snap/1536145373107256815" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div>
+      <div class="card">
+        <header><b>MEN</b><span>픽2 · 무신사</span></header>
+        <img class="thumb" src="https://image.msscdn.net/thumbnails/snap/images/2026/08/09/76bae53c753d4f88bc55b2bd6ce78803.jpg?w=260" alt="musinsa_snap-3-89952cd1" data-full="https://image.msscdn.net/thumbnails/snap/images/2026/08/09/76bae53c753d4f88bc55b2bd6ce78803.jpg?w=260" data-link="https://www.musinsa.com/snap/1535792112920586288" data-name="musinsa_snap-3-89952cd1" loading="lazy" referrerpolicy="no-referrer" />
+        
+        <span class="range">24~32℃ 적합</span>
+        <span class="tags">시티보이 · 캐주얼 · 아메카지</span>
+        
+        <a class="src-link" href="https://www.musinsa.com/snap/1535792112920586288" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div>
+      <div class="card">
+        <header><b>WOMEN</b><span>픽1 · 무신사</span></header>
+        <img class="thumb" src="https://image.msscdn.net/thumbnails/snap/images/2026/08/08/5e092b48ff63408f9e5de043da15f47e.jpg?w=260" alt="musinsa_snap-0-f2165f96" data-full="https://image.msscdn.net/thumbnails/snap/images/2026/08/08/5e092b48ff63408f9e5de043da15f47e.jpg?w=260" data-link="https://www.musinsa.com/snap/1535658417482395713" data-name="musinsa_snap-0-f2165f96" loading="lazy" referrerpolicy="no-referrer" />
+        
+        <span class="range">24~32℃ 적합</span>
+        <span class="tags">페미닌 · 캐주얼 · 이지룩</span>
+        
+        <a class="src-link" href="https://www.musinsa.com/snap/1535658417482395713" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div>
+      <div class="card">
+        <header><b>WOMEN</b><span>픽2 · 무신사</span></header>
+        <img class="thumb" src="https://image.msscdn.net/thumbnails/snap/images/2026/08/08/201fb7e6a24b45eda9b661e27be7ddf7.jpg?w=260" alt="musinsa_snap-2-9c11acfb" data-full="https://image.msscdn.net/thumbnails/snap/images/2026/08/08/201fb7e6a24b45eda9b661e27be7ddf7.jpg?w=260" data-link="https://www.musinsa.com/snap/1535433750394232345" data-name="musinsa_snap-2-9c11acfb" loading="lazy" referrerpolicy="no-referrer" />
+        
+        <span class="range">24~32℃ 적합</span>
+        <span class="tags">스트릿 · Y2K · 캐주얼</span>
+        
+        <a class="src-link" href="https://www.musinsa.com/snap/1535433750394232345" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div></div>
+
+  <h2>텍스트 콘텐츠 <span class="muted">복사해서 바로 올릴 수 있는 3가지 톤</span></h2>
+  <div class="rule"></div>
+  <div class="texts">
+      <div class="text-card">
+        <span class="tone">기본 정보형</span>
+        <pre id="t0">내일 33도 ‼️‼️‼️
+8/11 (화) 서울 기준 최고 33도 + 구름 많고 후덥지근한 날씨.
+덥고 습하지만 센스있게 입는 내일의 픽.
+
+1. [남] 기능성 티 + 나일론 숏팬츠 (스포티 러닝룩)
+2. [남] 오버핏 반팔 셔츠 + 치노 반바지 (시티보이 아메카지)
+3. [여] 린넨 원피스 + 샌들 (페미닌 이지룩)
+4. [여] 그래픽 크롭티 + 카고 팬츠 (스트릿 Y2K)
+
+앞으로 날씨 기준 다음날 코디 자주 올릴 예정.
+팔로우 해두면 입을 옷 고민 덜 함니다.</pre>
+        <button type="button" data-copy="0">복사</button>
+      </div>
+      <div class="text-card">
+        <span class="tone">담백 미니멀</span>
+        <pre id="t1">내일 33도.
+8/11 (화) 서울 최고 33도, 최저 25도. 구름 많음.
+
+더운 날씨에 맞춘 추천 착장.
+
+남성:
+- 기능성 반팔과 러닝 쇼츠 (스포티 러닝룩)
+- 오버핏 셔츠와 와이드 하프 팬츠 (시티보이 아메카지)
+
+여성:
+- 린넨 원피스와 가벼운 샌들 (페미닌 이지룩)
+- 크롭티와 카고 스커트 (스트릿 Y2K)
+
+매일 날씨 기준 착장을 제안합니다. 팔로우 해두면 입을 옷 고민이 줄어듭니다.</pre>
+        <button type="button" data-copy="1">복사</button>
+      </div>
+      <div class="text-card">
+        <span class="tone">위트</span>
+        <pre id="t2">내일 33도 🫠🔥
+8/11 (화) 서울 기준 최고 33도. 구름은 많은데 왜 찜통 안에 들어와 있는 기분이지?
+육수 뽑기 딱 좋은 날씨지만 스타일은 못 참으니까.
+
+1. [남] 땀 흘려도 뛰다 온 척 가능한 기능성 티 + 나일론 숏팬츠 (스포티 러닝룩)
+2. [남] 옷 안으로 바람 통로 확보하는 오버핏 셔츠 + 치노 팬츠 (시티보이 아메카지)
+3. [여] 원피스 하나로 끝내는 꾸안꾸 (페미닌 이지룩)
+4. [여] 힙함으로 더위 기선제압하는 크롭티 + 카고 팬츠 (스트릿 Y2K)
+
+팔로우 해두면 내일 아침 &#x27;뭐 입지&#x27; 뇌정지 오는 거 막아줌.</pre>
+        <button type="button" data-copy="2">복사</button>
+      </div></div>
+
+  <h2>수집된 룩 <span class="muted">16장</span></h2>
+  <div class="rule"></div>
+  <div class="pool">
+      <div class="look">
+        <span class="src">무신사</span>
+        
+        <img class="thumb" src="https://image.msscdn.net/thumbnails/snap/images/2026/08/08/5e092b48ff63408f9e5de043da15f47e.jpg?w=260" alt="musinsa_snap-0-f2165f96" data-full="https://image.msscdn.net/thumbnails/snap/images/2026/08/08/5e092b48ff63408f9e5de043da15f47e.jpg?w=260" data-link="https://www.musinsa.com/snap/1535658417482395713" data-name="musinsa_snap-0-f2165f96" loading="lazy" referrerpolicy="no-referrer" />
+        <div class="meta"><b>WOMEN</b> · 24~32℃<br />페미닌 · 캐주얼 · 이지룩</div>
+        <a class="src-link" href="https://www.musinsa.com/snap/1535658417482395713" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div>
+      <div class="look">
+        <span class="src">무신사</span>
+        
+        <img class="thumb" src="https://image.msscdn.net/thumbnails/snap/images/2026/08/09/77d3d359f4594b1b9fc1c961eeec795d.jpg?w=260" alt="musinsa_snap-1-12d840ff" data-full="https://image.msscdn.net/thumbnails/snap/images/2026/08/09/77d3d359f4594b1b9fc1c961eeec795d.jpg?w=260" data-link="https://www.musinsa.com/snap/1535678706437464569" data-name="musinsa_snap-1-12d840ff" loading="lazy" referrerpolicy="no-referrer" />
+        <div class="meta"><b>MEN</b> · 23~31℃<br />스트릿 · 올블랙 · 고프코어</div>
+        <a class="src-link" href="https://www.musinsa.com/snap/1535678706437464569" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div>
+      <div class="look">
+        <span class="src">무신사</span>
+        
+        <img class="thumb" src="https://image.msscdn.net/thumbnails/snap/images/2026/08/08/201fb7e6a24b45eda9b661e27be7ddf7.jpg?w=260" alt="musinsa_snap-2-9c11acfb" data-full="https://image.msscdn.net/thumbnails/snap/images/2026/08/08/201fb7e6a24b45eda9b661e27be7ddf7.jpg?w=260" data-link="https://www.musinsa.com/snap/1535433750394232345" data-name="musinsa_snap-2-9c11acfb" loading="lazy" referrerpolicy="no-referrer" />
+        <div class="meta"><b>WOMEN</b> · 24~32℃<br />스트릿 · Y2K · 캐주얼</div>
+        <a class="src-link" href="https://www.musinsa.com/snap/1535433750394232345" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div>
+      <div class="look">
+        <span class="src">무신사</span>
+        
+        <img class="thumb" src="https://image.msscdn.net/thumbnails/snap/images/2026/08/09/76bae53c753d4f88bc55b2bd6ce78803.jpg?w=260" alt="musinsa_snap-3-89952cd1" data-full="https://image.msscdn.net/thumbnails/snap/images/2026/08/09/76bae53c753d4f88bc55b2bd6ce78803.jpg?w=260" data-link="https://www.musinsa.com/snap/1535792112920586288" data-name="musinsa_snap-3-89952cd1" loading="lazy" referrerpolicy="no-referrer" />
+        <div class="meta"><b>MEN</b> · 24~32℃<br />시티보이 · 캐주얼 · 아메카지</div>
+        <a class="src-link" href="https://www.musinsa.com/snap/1535792112920586288" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div>
+      <div class="look">
+        <span class="src">무신사</span>
+        
+        <img class="thumb" src="https://image.msscdn.net/thumbnails/snap/images/2026/08/09/da0312c9fe564c8aa1c33cea8279b137.jpg?w=260" alt="musinsa_snap-4-f2d9afe3" data-full="https://image.msscdn.net/thumbnails/snap/images/2026/08/09/da0312c9fe564c8aa1c33cea8279b137.jpg?w=260" data-link="https://www.musinsa.com/snap/1536005914191971465" data-name="musinsa_snap-4-f2d9afe3" loading="lazy" referrerpolicy="no-referrer" />
+        <div class="meta"><b>WOMEN</b> · 24~32℃<br />페미닌 · 모던 · 드레시</div>
+        <a class="src-link" href="https://www.musinsa.com/snap/1536005914191971465" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div>
+      <div class="look">
+        <span class="src">무신사</span>
+        <span class="badge ai">AI</span>
+        <img class="thumb" src="https://image.msscdn.net/thumbnails/snap/images/2026/08/03/6c569f171a4c44f3a45febb47c3070b2.jpg?w=260" alt="musinsa_snap-5-2136bf78" data-full="https://image.msscdn.net/thumbnails/snap/images/2026/08/03/6c569f171a4c44f3a45febb47c3070b2.jpg?w=260" data-link="https://www.musinsa.com/snap/1533727228341948278" data-name="musinsa_snap-5-2136bf78" loading="lazy" referrerpolicy="no-referrer" />
+        <div class="meta"><b>WOMEN</b> · 20~27℃<br />캐주얼 · 미니멀 · 시티보이</div>
+        <a class="src-link" href="https://www.musinsa.com/snap/1533727228341948278" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div>
+      <div class="look">
+        <span class="src">무신사</span>
+        
+        <img class="thumb" src="https://image.msscdn.net/thumbnails/snap/images/2026/08/10/7bf714f5985e497faaf0fdcfa6fc5b9c.jpg?w=260" alt="musinsa_snap-6-b685381f" data-full="https://image.msscdn.net/thumbnails/snap/images/2026/08/10/7bf714f5985e497faaf0fdcfa6fc5b9c.jpg?w=260" data-link="https://www.musinsa.com/snap/1536145373107256815" data-name="musinsa_snap-6-b685381f" loading="lazy" referrerpolicy="no-referrer" />
+        <div class="meta"><b>MEN</b> · 24~33℃<br />스포티 · 러닝룩 · 캐주얼</div>
+        <a class="src-link" href="https://www.musinsa.com/snap/1536145373107256815" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div>
+      <div class="look">
+        <span class="src">무신사</span>
+        
+        <img class="thumb" src="https://image.msscdn.net/thumbnails/snap/images/2026/08/09/053db5c0a62f4ac9b5d478fff3674d3e.jpg?w=260" alt="musinsa_snap-7-55dadd74" data-full="https://image.msscdn.net/thumbnails/snap/images/2026/08/09/053db5c0a62f4ac9b5d478fff3674d3e.jpg?w=260" data-link="https://www.musinsa.com/snap/1535956685449304231" data-name="musinsa_snap-7-55dadd74" loading="lazy" referrerpolicy="no-referrer" />
+        <div class="meta"><b>MEN</b> · 24~32℃<br />스트릿 · 캐주얼 · 유니크</div>
+        <a class="src-link" href="https://www.musinsa.com/snap/1535956685449304231" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div>
+      <div class="look">
+        <span class="src">유니클로W</span>
+        
+        <img class="thumb" src="https://api.fastretailing.com/ugc/v1/uq/kr/SR_IMAGES/ugc_stylehint_uq_kr_photo_260607_1921253_r-300-400" alt="uniqlo_women-0-df429a77" data-full="https://api.fastretailing.com/ugc/v1/uq/kr/SR_IMAGES/ugc_stylehint_uq_kr_photo_260607_1921253_r-300-400" data-link="https://www.uniqlo.com/kr/ko/stylingbook/stylehint/14279360" data-name="uniqlo_women-0-df429a77" loading="lazy" referrerpolicy="no-referrer" />
+        <div class="meta"><b>WOMEN</b> · 20~27℃<br />스트릿 · 캐주얼 · Y2K</div>
+        <a class="src-link" href="https://www.uniqlo.com/kr/ko/stylingbook/stylehint/14279360" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div>
+      <div class="look">
+        <span class="src">유니클로W</span>
+        
+        <img class="thumb" src="https://api.fastretailing.com/ugc/v1/uq/kr/SR_IMAGES/ugc_stylehint_uq_kr_photo_260526_1912606_r-300-400" alt="uniqlo_women-1-3745cb5b" data-full="https://api.fastretailing.com/ugc/v1/uq/kr/SR_IMAGES/ugc_stylehint_uq_kr_photo_260526_1912606_r-300-400" data-link="https://www.uniqlo.com/kr/ko/stylingbook/stylehint/14145711" data-name="uniqlo_women-1-3745cb5b" loading="lazy" referrerpolicy="no-referrer" />
+        <div class="meta"><b>WOMEN</b> · 24~32℃<br />캐주얼 · 미니멀 · 데일리</div>
+        <a class="src-link" href="https://www.uniqlo.com/kr/ko/stylingbook/stylehint/14145711" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div>
+      <div class="look">
+        <span class="src">유니클로M</span>
+        
+        <img class="thumb" src="https://api.fastretailing.com/ugc/v1/uq/kr/SR_IMAGES/ugc_stylehint_uq_kr_photo_260518_1904955_r-300-400" alt="uniqlo_men-0-dd93958a" data-full="https://api.fastretailing.com/ugc/v1/uq/kr/SR_IMAGES/ugc_stylehint_uq_kr_photo_260518_1904955_r-300-400" data-link="https://www.uniqlo.com/kr/ko/stylingbook/stylehint/14002350" data-name="uniqlo_men-0-dd93958a" loading="lazy" referrerpolicy="no-referrer" />
+        <div class="meta"><b>MEN</b> · 24~32℃<br />캐주얼 · 미니멀 · 시티보이</div>
+        <a class="src-link" href="https://www.uniqlo.com/kr/ko/stylingbook/stylehint/14002350" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div>
+      <div class="look">
+        <span class="src">유니클로M</span>
+        
+        <img class="thumb" src="https://api.fastretailing.com/ugc/v1/uq/kr/SR_IMAGES/ugc_stylehint_uq_kr_photo_260805_1966073_r-300-400" alt="uniqlo_men-1-204a9aa3" data-full="https://api.fastretailing.com/ugc/v1/uq/kr/SR_IMAGES/ugc_stylehint_uq_kr_photo_260805_1966073_r-300-400" data-link="https://www.uniqlo.com/kr/ko/stylingbook/stylehint/15109877" data-name="uniqlo_men-1-204a9aa3" loading="lazy" referrerpolicy="no-referrer" />
+        <div class="meta"><b>MEN</b> · 18~25℃<br />댄디 · 시티보이 · 클래식</div>
+        <a class="src-link" href="https://www.uniqlo.com/kr/ko/stylingbook/stylehint/15109877" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div>
+      <div class="look">
+        <span class="src">WEAR M</span>
+        
+        <img class="thumb" src="https://images.wear2.jp/coordinate/oJilz2gb/UeDrf6RH/1786287221_276.jpg" alt="wear_men-0-0da382b1" data-full="https://images.wear2.jp/coordinate/oJilz2gb/UeDrf6RH/1786287221_276.jpg" data-link="https://wear.jp/gaaaaaakun7/27208300/" data-name="wear_men-0-0da382b1" loading="lazy" referrerpolicy="no-referrer" />
+        <div class="meta"><b>MEN</b> · 23~30℃<br />스트릿 · 빈티지 · Y2K</div>
+        <a class="src-link" href="https://wear.jp/gaaaaaakun7/27208300/" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div>
+      <div class="look">
+        <span class="src">WEAR M</span>
+        
+        <img class="thumb" src="https://images.wear2.jp/coordinate/3oiw78Xa/3sIRxfYd/1786322407_276.jpg" alt="wear_men-1-b8e83abe" data-full="https://images.wear2.jp/coordinate/3oiw78Xa/3sIRxfYd/1786322407_276.jpg" data-link="https://wear.jp/tomokimokimoki/27209331/" data-name="wear_men-1-b8e83abe" loading="lazy" referrerpolicy="no-referrer" />
+        <div class="meta"><b>MEN</b> · 23~30℃<br />캐주얼 · 미니멀 · 모던</div>
+        <a class="src-link" href="https://wear.jp/tomokimokimoki/27209331/" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div>
+      <div class="look">
+        <span class="src">WEAR W</span>
+        
+        <img class="thumb" src="https://images.wear2.jp/coordinate/Z8ia238l/DrIDXlkj/1786323656_276.jpg" alt="wear_women-0-02906f1c" data-full="https://images.wear2.jp/coordinate/Z8ia238l/DrIDXlkj/1786323656_276.jpg" data-link="https://wear.jp/cococorik/27209388/" data-name="wear_women-0-02906f1c" loading="lazy" referrerpolicy="no-referrer" />
+        <div class="meta"><b>WOMEN</b> · 24~32℃<br />캐주얼 · 스트릿 · 이지룩</div>
+        <a class="src-link" href="https://wear.jp/cococorik/27209388/" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div>
+      <div class="look">
+        <span class="src">WEAR W</span>
+        
+        <img class="thumb" src="https://images.wear2.jp/coordinate/jmi86D6Z/rpRBNW4t/1786283539_276.jpg" alt="wear_women-1-c9d6574d" data-full="https://images.wear2.jp/coordinate/jmi86D6Z/rpRBNW4t/1786283539_276.jpg" data-link="https://wear.jp/mayacode/27208164/" data-name="wear_women-1-c9d6574d" loading="lazy" referrerpolicy="no-referrer" />
+        <div class="meta"><b>WOMEN</b> · 21~28℃<br />캐주얼 · 빈티지 · 유니크</div>
+        <a class="src-link" href="https://wear.jp/mayacode/27208164/" target="_blank" rel="noopener noreferrer">원본 페이지 ↗</a>
+      </div></div>
+  </section>
+
+  <section class="panel" id="panel-ideas">
+    <h2>콘텐츠 아이디어 보울 <span class="muted">48건 · 읽기 전용</span></h2>
+    <div class="rule"></div>
+
+      <h3 class="idea-group">할인 <span class="muted">10건</span></h3>
+      <div class="idea-list">
+        <a class="idea-row" href="https://eomisae.co.kr/os/197484724"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">[무료교환반품] 베이프 티셔츠 8.8발(최대적립 3,...</span>
+          <span class="idea-meta">어미새 · 🔥 · ♥ 13 · 조회 3473 · 네이버</span>
+        </a>
+        <a class="idea-row" href="https://eomisae.co.kr/os/197491774"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">짱구 반팔 파자마 1.7발 등 곡괭이</span>
+          <span class="idea-meta">어미새 · 🔥 · ♥ 6 · 조회 2621 · 네이버</span>
+        </a>
+        <a class="idea-row" href="https://eomisae.co.kr/os/197475145"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">노스페이스 브랜드데이 이벤트</span>
+          <span class="idea-meta">어미새 · 🔥 · ♥ 6 · 조회 4176 · 네이버</span>
+        </a>
+        <a class="idea-row" href="https://eomisae.co.kr/os/197517976"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">이스트팩 패밀리 세일</span>
+          <span class="idea-meta">어미새 · 🔥 · ♥ 5 · 조회 725 · 국내</span>
+        </a>
+        <a class="idea-row" href="https://eomisae.co.kr/os/197510040"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">도큐먼트 아카이브 세일</span>
+          <span class="idea-meta">어미새 · 🔥 · ♥ 5 · 조회 1743 · 국내</span>
+        </a>
+        <a class="idea-row" href="https://eomisae.co.kr/os/197515729"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">젤카야노14 블랙 10%+2만적립</span>
+          <span class="idea-meta">어미새 · ♥ 3 · 조회 1996 · 네이버</span>
+        </a>
+        <a class="idea-row" href="https://eomisae.co.kr/os/197511208"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">언더아머 SS 클리어런스 세일 (최대 68% 할인)</span>
+          <span class="idea-meta">어미새 · ♥ 3 · 조회 1372 · 네이버</span>
+        </a>
+        <a class="idea-row" href="https://eomisae.co.kr/os/197485324"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">옵티미스틱 러너스 나일론 러닝 캡 4.3발</span>
+          <span class="idea-meta">어미새 · ♥ 1 · 조회 2069 · 네이버</span>
+        </a>
+        <a class="idea-row" href="https://eomisae.co.kr/os/197522077"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">파르티멘토 스트레이트 플레어 데님팬츠 64590원</span>
+          <span class="idea-meta">어미새 · ♥ 0 · 조회 548 · 국내</span>
+        </a>
+        <a class="idea-row" href="https://eomisae.co.kr/os/197505668"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">무료반품) 나이키 스우시 헤어밴드 ₩9,700 언스트...</span>
+          <span class="idea-meta">어미새 · ♥ 0 · 조회 1128 · 네이버</span>
+        </a>
+      </div>
+      <h3 class="idea-group">드랍·신상 <span class="muted">18건</span></h3>
+      <div class="idea-list is-collapsed">
+        <a class="idea-row" href="https://www.eyesmag.com/posts/164963/kidill-interviewww"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">펑크 정신을 기반으로 나아가는 브랜드, 키딜 인터뷰</span>
+          <span class="idea-meta">아이즈 · 🔥 · 조회 21024 · 패션 &gt; 뉴스</span>
+        </a>
+        <a class="idea-row" href="https://www.eyesmag.com/posts/165035/seiko-145th-anniversary-collection"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">세이코, 창립 145주년 기념 리미티드 에디션 공개</span>
+          <span class="idea-meta">아이즈 · 🔥 · 조회 10174 · 패션 &gt; 뉴스</span>
+        </a>
+        <a class="idea-row" href="https://www.eyesmag.com/posts/165036/blankof-graphpaper-collaboration-release"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">블랭코브 x 그라프페이퍼 협업 컬렉션 출시 정보</span>
+          <span class="idea-meta">아이즈 · 🔥 · 조회 5909 · 패션 &gt; 뉴스</span>
+        </a>
+        <a class="idea-row" href="https://www.eyesmag.com/posts/165025/karina-converse-runstar-crush"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">카리나가 선택한 컨버스 ‘런스타 크러쉬’</span>
+          <span class="idea-meta">아이즈 · 🔥 · 조회 5575 · 패션 &gt; 슈즈</span>
+        </a>
+        <a class="idea-row" href="https://www.eyesmag.com/posts/165024/arket-new-collection"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">아르켓, 국내 아홉 번째 매장 오픈</span>
+          <span class="idea-meta">아이즈 · 🔥 · 조회 5564 · 패션 &gt; 뉴스</span>
+        </a>
+        <a class="idea-row" href="https://www.eyesmag.com/posts/165021/alo-bella-hadid-campaign"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">알로, 벨라 하디드와 함께한 글로벌 캠페인 공개</span>
+          <span class="idea-meta">아이즈 · 🔥 · 조회 5429 · 패션 &gt; 뉴스</span>
+        </a>
+        <a class="idea-row" href="https://hypebeast.kr/2026/8/ultra-rare-low-mileage-1985-ferrari-288-gto-expected-to-fetch-up-to-11-million-usd-rm-sothebys-auction"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">주행거리 1,000마일 미만 1985 Ferrari 288 GTO, RM Sotheby’s 경매서 최대 1,100만 달러 예상</span>
+          <span class="idea-meta">하입비스트 · 자동차</span>
+        </a>
+        <a class="idea-row" href="https://hypebeast.kr/2026/8/nike-japan-teases-one-piece-collaboration"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">나이키, 대형 『원피스』 협업 예고… 곧 공개된다</span>
+          <span class="idea-meta">하입비스트 · 패션</span>
+        </a>
+        <a class="idea-row" href="https://hypebeast.kr/2026/8/apple-airpods-with-cameras-may-debut-next-month"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">Apple, 9월 iPhone 18 Pro 행사에서 카메라 탑재 AirPods 공개할까</span>
+          <span class="idea-meta">하입비스트 · 테크</span>
+        </a>
+        <a class="idea-row" href="https://hypebeast.kr/2026/8/david-fincher-netflix-squid-game-american-adaptation-tv-series-cancelled-reports-rumors"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">넷플릭스, 데이비드 핀처의 ‘오징어 게임’ 스핀오프 무산설</span>
+          <span class="idea-meta">하입비스트 · 엔터테인먼트</span>
+        </a>
+        <a class="idea-row is-extra" href="https://hypebeast.kr/2026/8/barbour-journal-standard-fall-winter-fw-2026-wool-cropped-old-bidele-release-info"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">Barbour x JOURNAL STANDARD, 빈티지 무드 울로 완성한 크롭 ‘Old Bedale’</span>
+          <span class="idea-meta">하입비스트 · 패션</span>
+        </a>
+        <a class="idea-row is-extra" href="https://hypebeast.kr/2026/8/christopher-nolan-the-odyssey-surpasses-1-billion-usd-global-box-office"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">크리스토퍼 놀란의 &#x27;The Odyssey&#x27;, 글로벌 박스오피스 10억 달러 돌파</span>
+          <span class="idea-meta">하입비스트 · 엔터테인먼트</span>
+        </a>
+        <a class="idea-row is-extra" href="https://hypebeast.kr/2026/8/nike-vomero-plus-cow-print-ir0035-100-official-images"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">나이키, 카우 프린트와 세일 포니 헤어 스우시로 완성한 보메로 플러스 공개</span>
+          <span class="idea-meta">하입비스트 · 신발</span>
+        </a>
+        <a class="idea-row is-extra" href="https://hypebeast.kr/2026/8/lego-harry-potter-the-ministry-of-magic-collectors-edition-76476-release-info"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">LEGO, 3,491피스 멀티 레벨 ‘해리 포터’ 마법부 컬렉터 세트 공개</span>
+          <span class="idea-meta">하입비스트 · 패션</span>
+        </a>
+        <a class="idea-row is-extra" href="https://hypebeast.kr/2026/8/yoshida-co-90-anniversary-book-release-info"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">Yoshida &amp; Co., 가방을 꿰매는 실로 90년 역사를 책으로 엮다</span>
+          <span class="idea-meta">하입비스트 · 패션</span>
+        </a>
+        <a class="idea-row is-extra" href="https://hypebeast.kr/2026/8/story-mfg-pf-flyers-all-american-story-mfg-high-tops-a26smfgw-a26smfgi-release-info"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">Story mfg와 PF Flyers, 손으로 짜고 천연 염색한 원단으로 재해석한 All-American 하이톱</span>
+          <span class="idea-meta">하입비스트 · 신발</span>
+        </a>
+        <a class="idea-row is-extra" href="https://www.eyesmag.com/posts/164823/empty-title-placeholder"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">반항의 상징이 된 슬리브리스, 헤인즈</span>
+          <span class="idea-meta">아이즈</span>
+        </a>
+        <a class="idea-row is-extra" href="https://www.eyesmag.com/posts/164907/lttt-asics-collaboration-interview"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">탁구 모임을 넘어 아식스 협업까지, LTTT 인터뷰</span>
+          <span class="idea-meta">아이즈</span>
+        </a>
+      </div>
+      <button class="more" type="button">더 보기 (8건)</button>
+      <h3 class="idea-group">매거진 <span class="muted">20건</span></h3>
+      <div class="idea-list is-collapsed">
+        <a class="idea-row" href="https://www.esquirekorea.co.kr/article/1907402"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">지드래곤은 &#x27;이 바지&#x27;를 어떻게 입었을까?</span>
+          <span class="idea-meta">에스콰이어</span>
+        </a>
+        <a class="idea-row" href="https://www.esquirekorea.co.kr/article/1907156"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">쿨내나는 남자는 &#x27;흰 나시&#x27;를 이렇게 입습니다</span>
+          <span class="idea-meta">에스콰이어</span>
+        </a>
+        <a class="idea-row" href="https://www.esquirekorea.co.kr/article/1906742"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">가을 남친룩 &#x27;이렇게&#x27;만 입어주세요</span>
+          <span class="idea-meta">에스콰이어</span>
+        </a>
+        <a class="idea-row" href="https://www.esquirekorea.co.kr/article/1907130"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">흰 티에 청바지 &#x27;국롤&#x27; 조합 이렇게 해보세요</span>
+          <span class="idea-meta">에스콰이어</span>
+        </a>
+        <a class="idea-row" href="https://www.esquirekorea.co.kr/article/1907093"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">차덕후 주목! &#x27;아디다스 오리지널스 x 피치스&#x27; 두 번째 협업 출시</span>
+          <span class="idea-meta">에스콰이어</span>
+        </a>
+        <a class="idea-row" href="https://www.esquirekorea.co.kr/article/1907686"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">미리 준비하자! 워터밤 생존템 &#x27;고글 선글라스&#x27; 4</span>
+          <span class="idea-meta">에스콰이어</span>
+        </a>
+        <a class="idea-row" href="https://www.esquirekorea.co.kr/article/1907618"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">5만원 이하 무신사 &#x27;컬러 래쉬가드&#x27; 4</span>
+          <span class="idea-meta">에스콰이어</span>
+        </a>
+        <a class="idea-row" href="https://www.esquirekorea.co.kr/article/1907577"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">손풍기보다 3배 시원한 &#x27;냉각 선풍기&#x27;</span>
+          <span class="idea-meta">에스콰이어</span>
+        </a>
+        <a class="idea-row" href="https://www.esquirekorea.co.kr/article/1907498"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">테토력 살아나는 &#x27;운동 나시&#x27; 4</span>
+          <span class="idea-meta">에스콰이어</span>
+        </a>
+        <a class="idea-row" href="https://www.esquirekorea.co.kr/article/1907421"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">요즘 박재범이 신는 &#x27;이 신발&#x27;</span>
+          <span class="idea-meta">에스콰이어</span>
+        </a>
+        <a class="idea-row is-extra" href="https://www.elle.co.kr/article/1907738"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">올여름 잘 쓰던 볼캡은 가을에 더 멋집니다</span>
+          <span class="idea-meta">엘르</span>
+        </a>
+        <a class="idea-row is-extra" href="https://www.elle.co.kr/article/1906680"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">올가을은 같은 스타일도 다르게 입을 때 더 멋집니다</span>
+          <span class="idea-meta">엘르</span>
+        </a>
+        <a class="idea-row is-extra" href="https://www.elle.co.kr/article/1907731"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">여름에 유행한 이 티셔츠를 가을에는 이렇게 입으세요</span>
+          <span class="idea-meta">엘르</span>
+        </a>
+        <a class="idea-row is-extra" href="https://www.elle.co.kr/article/1907719"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">가을 시작됐지만 트랙 쇼츠가 쿨한 늦여름이기도 합니다</span>
+          <span class="idea-meta">엘르</span>
+        </a>
+        <a class="idea-row is-extra" href="https://www.elle.co.kr/article/1907647"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">옷 잘 입는 사람들은 여름에 셔츠를 입습니다</span>
+          <span class="idea-meta">엘르</span>
+        </a>
+        <a class="idea-row is-extra" href="https://www.elle.co.kr/article/1906622"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">가을 시작되는 &#x27;입추&#x27;에 미리 보는 올가을 스타일</span>
+          <span class="idea-meta">엘르</span>
+        </a>
+        <a class="idea-row is-extra" href="https://www.elle.co.kr/article/1907732"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">정호연처럼 입는 원피스 수영복은 물 밖에서도 근사합니다</span>
+          <span class="idea-meta">엘르</span>
+        </a>
+        <a class="idea-row is-extra" href="https://www.elle.co.kr/article/1907720"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">송혜교처럼 입으면 늦여름 휴가도 낭만 한도 초과</span>
+          <span class="idea-meta">엘르</span>
+        </a>
+        <a class="idea-row is-extra" href="https://www.elle.co.kr/article/1907641"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">쿨한 수트 스타일링은 농구 잘하는 언니들한테 배우세요</span>
+          <span class="idea-meta">엘르</span>
+        </a>
+        <a class="idea-row is-extra" href="https://www.elle.co.kr/article/1907648"
+           target="_blank" rel="noopener noreferrer">
+          <span class="idea-title">늦여름에는 제니가 입은 바지로 갈아탑니다</span>
+          <span class="idea-meta">엘르</span>
+        </a>
+      </div>
+      <button class="more" type="button">더 보기 (10건)</button>
+  </section>
+
+  <footer>
+    2026-08-10 11:02 KST 자동 생성 · 매일 아침 8시 갱신<br />
+    사진은 각 출처의 원본 주소를 그대로 표시합니다(재배포 아님). 발행에 쓰려면
+    출처 링크에서 직접 확인하세요. 이미지·영상 생성과 업로드는 수동 진행합니다.
+  </footer>
+</main>
+
+<div id="lightbox" hidden>
+  <img id="lb-img" alt="확대 보기" referrerpolicy="no-referrer" />
+  <div class="lb-actions">
+    <button id="lb-save" type="button">이미지 저장 ↓</button>
+    <a id="lb-link" target="_blank" rel="noopener noreferrer" hidden>원본 페이지 열기 ↗</a>
+    <button id="lb-close" type="button">닫기 (Esc)</button>
+  </div>
+  <span class="hint">저장이 막히는 사이트는 새 탭으로 열립니다 — 거기서 우클릭 저장하세요.</span>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let current = null;
+
+  // 탭·접힘 CSS를 여기서 켠다. 스크립트가 실패하면 켜지지 않으므로
+  // 페이지는 전부 펼쳐진 평범한 문서로 남는다.
+  document.documentElement.classList.add("js");
+
+  const tabs = [...document.querySelectorAll(".tab")];
+
+  function showPanel(name) {
+    tabs.forEach((tab) => tab.classList.toggle("is-active", tab.dataset.panel === name));
+    document.querySelectorAll(".panel").forEach((panel) =>
+      panel.classList.toggle("is-active", panel.id === "panel-" + name)
+    );
+    history.replaceState(null, "", name === "ideas" ? "#ideas" : location.pathname);
+  }
+
+  if (tabs.length && location.hash === "#ideas") showPanel("ideas");
+
+  function openLightbox(img) {
+    current = {
+      full: img.dataset.full,
+      link: img.dataset.link,
+      name: img.dataset.name,
+    };
+    $("lb-img").src = current.full;
+    $("lb-link").hidden = !current.link;
+    if (current.link) $("lb-link").href = current.link;
+    $("lightbox").hidden = false;
+  }
+
+  function closeLightbox() {
+    $("lightbox").hidden = true;
+    $("lb-img").removeAttribute("src");
+  }
+
+  document.addEventListener("click", async (event) => {
+    const tab = event.target.closest(".tab");
+    if (tab) {
+      showPanel(tab.dataset.panel);
+      return;
+    }
+
+    // 더 보기는 한 방향이다. 펼치면 버튼은 사라진다.
+    const more = event.target.closest(".more");
+    if (more) {
+      more.previousElementSibling.classList.remove("is-collapsed");
+      more.remove();
+      return;
+    }
+
+    const copyButton = event.target.closest("button[data-copy]");
+    if (copyButton) {
+      await navigator.clipboard.writeText(
+        $("t" + copyButton.dataset.copy).textContent
+      );
+      copyButton.textContent = "복사됨 ✓";
+      setTimeout(() => (copyButton.textContent = "복사"), 1500);
+      return;
+    }
+    if (event.target.closest("#lightbox")) return;
+    const thumb = event.target.closest("img.thumb");
+    if (thumb) openLightbox(thumb);
+  });
+
+  $("lightbox").addEventListener("click", (event) => {
+    if (!event.target.closest(".lb-actions")) closeLightbox();
+  });
+  $("lb-close").onclick = closeLightbox;
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeLightbox();
+  });
+
+  // 사진은 다른 도메인(CDN)에 있다. 무신사·WEAR는 CORS를 허용하지 않아
+  // blob으로 내려받을 수 없으므로, 막히면 새 탭으로 열어 직접 저장하게 한다.
+  $("lb-save").onclick = async () => {
+    if (!current) return;
+    try {
+      const response = await fetch(current.full, { referrerPolicy: "no-referrer" });
+      if (!response.ok) throw new Error("fetch 실패");
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = (current.name || "look") + ".jpg";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      window.open(current.full, "_blank", "noopener");
+    }
+  };
+</script>
+</body>
+</html>

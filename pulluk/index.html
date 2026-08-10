@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>최펄럭 코스 스튜디오</title>
+<meta name="description" content="즐겨찾기 기반 지역·목적 필터 코스 추천 — 파워J 콘텐츠 기획 도구">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚩</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Do+Hyeon&display=swap" rel="stylesheet">
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  :root {
+    --flag: #2447D6;      /* 깃발청 */
+    --flag-deep: #1B36A8;
+    --yellow: #F6BE2C;    /* 펄럭황 */
+    --paper: #FFF9EC;     /* 명찰크림 */
+    --ink: #221D16;       /* 먹선 */
+    --signal: #E8442E;    /* 신호적 (AI 추천) */
+    --card: #FFFFFF;
+    --muted: #7A6F60;
+    --line: 2px solid var(--ink);
+    --disp: 'Do Hyeon', sans-serif;
+    --body: 'Pretendard Variable', Pretendard, -apple-system, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: var(--body);
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font-family: inherit; cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--flag); outline-offset: 2px; }
+
+  /* ── 헤더: 안내판 밴드 ───────────────────────── */
+  header {
+    background: var(--yellow);
+    border-bottom: 3px solid var(--ink);
+    padding: 28px clamp(16px, 4vw, 48px) 24px;
+    display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  }
+  .face {
+    width: 76px; height: 76px; border-radius: 50%;
+    border: var(--line); object-fit: cover; background: #fff;
+    flex-shrink: 0;
+  }
+  .masthead .eyebrow {
+    font-family: var(--disp); font-size: 14px; letter-spacing: .14em;
+    color: var(--flag-deep);
+  }
+  .masthead h1 {
+    font-family: var(--disp); font-weight: 400;
+    font-size: clamp(28px, 5vw, 44px); line-height: 1.1;
+  }
+  .masthead { flex: 1 1 240px; min-width: 0; }
+  .masthead p { font-size: 14px; color: #5C4A17; margin-top: 4px; }
+  .masthead p b { color: var(--ink); }
+
+  /* ── 본문 그리드 ─────────────────────────────── */
+  .wrap {
+    display: grid; grid-template-columns: 300px minmax(0, 1fr);
+    gap: 28px; max-width: 1100px;
+    margin: 0 auto; padding: 28px clamp(16px, 4vw, 48px) 80px;
+    align-items: start;
+  }
+  @media (max-width: 880px) { .wrap { grid-template-columns: minmax(0, 1fr); } }
+  .rail, .board { min-width: 0; contain: inline-size; }
+  select, textarea { max-width: 100%; }
+
+  /* ── 컨트롤 레일 ─────────────────────────────── */
+  .rail {
+    background: var(--card); border: var(--line); border-radius: 14px;
+    padding: 20px; position: sticky; top: 16px;
+    box-shadow: 5px 5px 0 rgba(34,29,22,.14);
+  }
+  @media (max-width: 880px) { .rail { position: static; } }
+  .rail .field + .field { margin-top: 18px; }
+  .rail label.tag {
+    display: block; font-family: var(--disp); font-size: 15px;
+    letter-spacing: .08em; margin-bottom: 7px;
+  }
+  select {
+    width: 100%; padding: 10px 12px; font-family: inherit; font-size: 15px;
+    border: var(--line); border-radius: 9px; background: var(--paper); color: var(--ink);
+  }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .seg button {
+    padding: 9px 4px; border: var(--line); border-radius: 9px;
+    background: var(--paper); font-size: 14px; font-weight: 600; color: var(--ink);
+  }
+  .seg button[aria-pressed="true"] { background: var(--flag); color: #fff; border-color: var(--flag-deep); }
+  .check {
+    display: flex; align-items: flex-start; gap: 9px; font-size: 14px; cursor: pointer;
+  }
+  .check input { width: 17px; height: 17px; margin-top: 2px; accent-color: var(--signal); }
+  .check small { color: var(--muted); display: block; }
+  .go {
+    width: 100%; margin-top: 22px; padding: 14px;
+    font-family: var(--disp); font-size: 20px; letter-spacing: .06em;
+    background: var(--flag); color: #fff; border: var(--line); border-radius: 11px;
+    box-shadow: 4px 4px 0 var(--ink);
+    transition: transform .08s, box-shadow .08s;
+  }
+  .go:hover { transform: translate(-1px,-1px); box-shadow: 5px 5px 0 var(--ink); }
+  .go:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--ink); }
+  .redo {
+    width: 100%; margin-top: 9px; padding: 9px; font-size: 14px; font-weight: 600;
+    background: transparent; border: 2px dashed var(--muted); border-radius: 9px; color: var(--muted);
+  }
+  .redo:hover { border-color: var(--ink); color: var(--ink); }
+  .railfoot { margin-top: 16px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+  /* ── 결과: 경로 타임라인 ─────────────────────── */
+  .board h2 {
+    font-family: var(--disp); font-weight: 400; font-size: 26px; margin-bottom: 4px;
+  }
+  .board .sub { font-size: 14px; color: var(--muted); margin-bottom: 20px; }
+  .empty {
+    border: 2px dashed var(--muted); border-radius: 14px;
+    padding: 56px 24px; text-align: center; color: var(--muted); font-size: 15px;
+  }
+  .empty .bigflag { font-size: 40px; display: block; margin-bottom: 10px; }
+
+  .route { list-style: none; }
+  .stop {
+    position: relative; padding: 0 0 26px 56px;
+    animation: drop .35s both;
+  }
+  .stop:nth-child(2) { animation-delay: .06s; } .stop:nth-child(3) { animation-delay: .12s; }
+  .stop:nth-child(4) { animation-delay: .18s; } .stop:nth-child(5) { animation-delay: .24s; }
+  .stop:nth-child(6) { animation-delay: .30s; }
+  @keyframes drop { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .stop { animation: none; } }
+
+  /* 경로선 */
+  .stop::before {
+    content: ""; position: absolute; left: 19px; top: 8px; bottom: -8px;
+    border-left: 3px dashed var(--flag);
+  }
+  .stop:last-child::before { display: none; }
+  /* 깃발 마커 */
+  .marker {
+    position: absolute; left: 0; top: 0;
+    width: 40px; height: 40px; display: grid; place-items: center;
+    font-family: var(--disp); font-size: 17px; color: #fff;
+    background: var(--flag); border: var(--line); border-radius: 50% 50% 50% 6px;
+  }
+  .stop.ai .marker { background: var(--signal); }
+
+  .stopcard {
+    background: var(--card); border: var(--line); border-radius: 12px;
+    padding: 13px 16px; box-shadow: 4px 4px 0 rgba(34,29,22,.12);
+  }
+  .stop.ai .stopcard { border-style: dashed; border-color: var(--signal); }
+  .stopcard .slot {
+    font-family: var(--disp); font-size: 12.5px; letter-spacing: .12em; color: var(--flag-deep);
+  }
+  .stop.ai .stopcard .slot { color: var(--signal); }
+  .stopcard .name { font-size: 17.5px; font-weight: 700; margin: 1px 0 2px; }
+  .aitag {
+    display: inline-block; font-family: var(--disp); font-size: 11.5px; letter-spacing: .06em;
+    background: var(--signal); color: #fff; border-radius: 5px;
+    padding: 2px 7px; margin-left: 7px; vertical-align: 2px;
+  }
+  .stopcard .addr { font-size: 13px; color: var(--muted); }
+  .stopcard .note { font-size: 13px; color: #A03323; margin-top: 5px; }
+  .leg {
+    position: absolute; left: 42px; top: -21px;
+    font-size: 12px; color: var(--flag-deep); font-weight: 600;
+    background: var(--paper); padding: 0 6px;
+  }
+
+  .altpicks { margin: 6px 0 0 56px; font-size: 13px; color: var(--muted); }
+  .altpicks b { color: var(--signal); font-weight: 700; }
+
+  /* ── 초안 패널 ──────────────────────────────── */
+  .draft { margin-top: 34px; }
+  .draft h3 {
+    font-family: var(--disp); font-weight: 400; font-size: 20px; margin-bottom: 10px;
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  }
+  .count { font-family: var(--body); font-size: 13px; color: var(--muted); font-weight: 400; }
+  .count.over { color: var(--signal); font-weight: 700; }
+  textarea {
+    width: 100%; min-height: 340px; padding: 18px;
+    font-family: var(--body); font-size: 15px; line-height: 1.7; color: var(--ink);
+    background: var(--card); border: var(--line); border-radius: 12px;
+    box-shadow: 4px 4px 0 rgba(34,29,22,.12); resize: vertical;
+  }
+  .draftbtns { display: flex; gap: 9px; margin-top: 11px; flex-wrap: wrap; }
+  .copy {
+    padding: 11px 22px; font-family: var(--disp); font-size: 16px; letter-spacing: .05em;
+    background: var(--yellow); color: var(--ink); border: var(--line); border-radius: 9px;
+    box-shadow: 3px 3px 0 var(--ink); transition: transform .08s, box-shadow .08s;
+  }
+  .copy:active { transform: translate(2px,2px); box-shadow: 0 0 0 var(--ink); }
+
+  footer {
+    border-top: 3px solid var(--ink); background: var(--card);
+    padding: 18px clamp(16px, 4vw, 48px); font-size: 12.5px; color: var(--muted);
+    display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <img class="face" src="choi-pulluk.png" alt="최펄럭 캐릭터" onerror="this.style.display='none'">
+  <div class="masthead">
+    <div class="eyebrow">파워J 콘텐츠 기획 도구</div>
+    <h1>최펄럭 코스 스튜디오</h1>
+    <p>즐겨찾기 <b id="totalCount">-</b>곳에서 지역·목적에 맞는 코스를 뽑고, 게시용 초안까지 한 번에.</p>
+  </div>
+</header>
+
+<div class="wrap">
+  <aside class="rail" aria-label="코스 조건">
+    <div class="field">
+      <label class="tag" for="region">지역</label>
+      <select id="region"></select>
+    </div>
+    <div class="field">
+      <span class="tag" id="purposeLabel">목적</span>
+      <div class="seg" role="group" aria-labelledby="purposeLabel" id="purpose">
+        <button aria-pressed="true" data-v="데이트">데이트</button>
+        <button aria-pressed="false" data-v="혼자">혼자</button>
+        <button aria-pressed="false" data-v="친구">친구랑</button>
+        <button aria-pressed="false" data-v="부모님">부모님</button>
+      </div>
+    </div>
+    <div class="field">
+      <span class="tag" id="lenLabel">코스 길이</span>
+      <div class="seg" role="group" aria-labelledby="lenLabel" id="length">
+        <button aria-pressed="true" data-v="반나절">반나절</button>
+        <button aria-pressed="false" data-v="하루">하루 풀코스</button>
+      </div>
+    </div>
+    <div class="field">
+      <label class="check">
+        <input type="checkbox" id="aiMix" checked>
+        <span>AI 추천 섞기
+          <small>즐겨찾기에 없는 검증 유명 장소를 <b style="color:var(--signal)">[AI 추천]</b> 태그로 끼워 넣습니다</small>
+        </span>
+      </label>
+    </div>
+    <button class="go" id="go">🚩 코스 뽑기</button>
+    <button class="redo" id="redo" hidden>같은 조건으로 다시 뽑기</button>
+    <p class="railfoot">코스에는 즐겨찾기 장소만 들어갑니다. AI 추천 장소는 게시 전 영업·위치 확인이 필요합니다.</p>
+  </aside>
+
+  <main class="board">
+    <h2 id="title">오늘은 어디 깃발 들까</h2>
+    <p class="sub" id="subtitle">왼쪽에서 지역과 목적을 고르고 코스를 뽑아보세요.</p>
+
+    <div id="result">
+      <div class="empty">
+        <span class="bigflag">🚩</span>
+        지역 고르고 <b>코스 뽑기</b>를 누르면<br>여기에 도보 동선이 그려집니다.
+      </div>
+    </div>
+
+    <section class="draft" id="draftWrap" hidden>
+      <h3>게시 초안 <span class="count" id="charCount"></span></h3>
+      <textarea id="draftText" spellcheck="false" aria-label="게시 초안"></textarea>
+      <div class="draftbtns">
+        <button class="copy" id="copyBtn">초안 복사</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <span>🚩 최펄럭 코스 스튜디오 — 즐겨찾기 기반, 코스는 직선거리 기준 도보 추정</span>
+  <span id="stamp"></span>
+</footer>
+
+<script src="data.js"></script>
+<script>
+(function () {
+  const D = window.PULLUK;
+  if (!D) return;
+
+  document.getElementById('totalCount').textContent = D.places.length.toLocaleString();
+  document.getElementById('stamp').textContent = '데이터 ' + D.generatedAt + ' · 장소 ' + D.places.length.toLocaleString() + '곳 · 지역 ' + D.regions.length + '곳';
+
+  // 지역 셀렉트
+  const regionSel = document.getElementById('region');
+  D.regions.forEach(function (r, i) {
+    const o = document.createElement('option');
+    o.value = i;
+    o.textContent = r.name + ' (' + r.count + ')';
+    regionSel.appendChild(o);
+  });
+
+  // 세그먼트 버튼
+  function segInit(id) {
+    const seg = document.getElementById(id);
+    seg.addEventListener('click', function (e) {
+      const b = e.target.closest('button');
+      if (!b) return;
+      seg.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+    });
+  }
+  segInit('purpose'); segInit('length');
+  function segVal(id) { return document.getElementById(id).querySelector('[aria-pressed="true"]').dataset.v; }
+
+  function havKm(a, b, c, d) {
+    const r = Math.PI / 180, R = 6371;
+    const x = Math.sin((c - a) * r / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin((d - b) * r / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(x));
+  }
+
+  // 목적·길이 → 슬롯 시퀀스
+  const SLOTS = {
+    '데이트':   { '반나절': ['식당','스팟','카페'], '하루': ['식당','스팟','카페','식당','바'] },
+    '혼자':     { '반나절': ['식당','카페','스팟'], '하루': ['식당','스팟','카페','식당'] },
+    '친구':     { '반나절': ['식당','스팟','카페'], '하루': ['식당','스팟','스팟','식당','바'] },
+    '부모님':   { '반나절': ['식당','스팟','카페'], '하루': ['식당','스팟','카페','식당'] }
+  };
+  const SLOT_LABEL = { '식당': ['점심', '저녁'], '카페': ['커피'], '스팟': ['구경'], '바': ['마무리 한 잔'] };
+  const HOOK = {
+    '데이트': '주말 데이트', '혼자': '혼자 보내기 딱 좋은',
+    '친구': '친구랑 하루 털어먹는', '부모님': '부모님 모시고 가는'
+  };
+
+  function pickNear(cands, from, used) {
+    const free = cands.filter(function (p) { return !used.has(p); });
+    if (!free.length) return null;
+    if (!from) return free[Math.floor(Math.random() * free.length)];
+    free.sort(function (a, b) {
+      return havKm(from.lat, from.lon, a.lat, a.lon) - havKm(from.lat, from.lon, b.lat, b.lon);
+    });
+    return free[Math.floor(Math.random() * Math.min(3, free.length))];
+  }
+
+  let lastCourse = null;
+
+  function buildCourse() {
+    const region = D.regions[+regionSel.value];
+    const purpose = segVal('purpose'), length = segVal('length');
+    const useAI = document.getElementById('aiMix').checked;
+
+    const pool = {};
+    D.places.forEach(function (p) {
+      if (havKm(region.lat, region.lon, p.lat, p.lon) > region.radius) return;
+      (pool[p.cat] = pool[p.cat] || []).push(p);
+    });
+
+    const picks = (D.aiPicks[region.name] || []).slice();
+    const slots = SLOTS[purpose][length].slice();
+    const used = new Set(), usedAI = new Set();
+    const stops = [];
+    let cur = null, mealIdx = 0, aiInserted = false;
+
+    slots.forEach(function (cat, slotIdx) {
+      let place = pickNear(pool[cat] || [], cur, used);
+      let ai = null;
+
+      // 즐겨찾기에 해당 카테고리가 없으면 AI 후보로 채운다
+      if (!place) {
+        ai = picks.find(function (k) { return k.cat === cat && !usedAI.has(k); }) || null;
+      } else if (useAI && !aiInserted && slotIdx > 0 && cat === '스팟') {
+        // 스팟 슬롯 하나만 확률적으로 AI 후보로 교체.
+        // 첫 정거장은 동선의 기준점이라 즐겨찾기 장소를 유지한다.
+        const cand = picks.find(function (k) { return k.cat === cat && !usedAI.has(k); });
+        if (cand && Math.random() < 0.5) { ai = cand; place = null; }
+      }
+
+      let label = SLOT_LABEL[cat][0];
+      if (cat === '식당') { label = SLOT_LABEL['식당'][Math.min(mealIdx, 1)]; mealIdx++; }
+
+      if (ai) {
+        usedAI.add(ai); aiInserted = true;
+        stops.push({ slot: label, ai: true, name: ai.name, addr: '', note: ai.note, cat: cat });
+        // AI 후보는 좌표가 없으므로 현재 위치를 유지한다
+      } else if (place) {
+        used.add(place);
+        const leg = cur ? havKm(cur.lat, cur.lon, place.lat, place.lon) : null;
+        stops.push({ slot: label, ai: false, name: place.name, addr: place.addr, leg: leg, cat: cat });
+        cur = place;
+      }
+    });
+
+    const rest = picks.filter(function (k) { return !usedAI.has(k); });
+    return { region: region, purpose: purpose, length: length, stops: stops, restPicks: rest };
+  }
+
+  function fmtLeg(km) {
+    const m = Math.round(km * 1000 / 10) * 10;
+    const min = Math.max(1, Math.round(m / 70));
+    return '도보 약 ' + min + '분 · ' + (m >= 1000 ? (m / 1000).toFixed(1) + 'km' : m + 'm');
+  }
+
+  function render(course) {
+    lastCourse = course;
+    document.getElementById('title').textContent = '🚩 ' + course.region.name + ' · ' + course.purpose + ' ' + course.length;
+    document.getElementById('subtitle').textContent =
+      '즐겨찾기 ' + course.region.count + '곳 중에서 뽑은 동선입니다. 마음에 안 들면 다시 뽑으세요.';
+
+    const ol = document.createElement('ol');
+    ol.className = 'route';
+    course.stops.forEach(function (s, i) {
+      const li = document.createElement('li');
+      li.className = 'stop' + (s.ai ? ' ai' : '');
+      li.innerHTML =
+        '<span class="marker">' + (i + 1) + '</span>' +
+        '<div class="stopcard">' +
+          '<div class="slot">' + s.slot + '</div>' +
+          '<div class="name">' + s.name + (s.ai ? '<span class="aitag">AI 추천</span>' : '') + '</div>' +
+          (s.addr ? '<div class="addr">' + s.addr + '</div>' : '') +
+          (s.ai ? '<div class="note">' + (s.note || '') + ' — 게시 전 확인 필수</div>' : '') +
+        '</div>' +
+        (s.leg != null ? '<span class="leg">' + fmtLeg(s.leg) + '</span>' : '');
+      ol.appendChild(li);
+    });
+
+    const res = document.getElementById('result');
+    res.innerHTML = '';
+    res.appendChild(ol);
+
+    if (course.restPicks.length) {
+      const p = document.createElement('p');
+      p.className = 'altpicks';
+      p.innerHTML = '<b>다른 AI 후보:</b> ' + course.restPicks.map(function (k) { return k.name + '(' + k.cat + ')'; }).join(' · ');
+      res.appendChild(p);
+    }
+
+    document.getElementById('draftWrap').hidden = false;
+    const ta = document.getElementById('draftText');
+    ta.value = draftText(course);
+    updateCount();
+    document.getElementById('redo').hidden = false;
+  }
+
+  function draftText(course) {
+    const ACT = {
+      '점심': " 가서 점심.", '저녁': " 가서 저녁.", '커피': "에서 커피 한 잔.",
+      '구경': " 구경.", '마무리 한 잔': "에서 마무리 한 잔 하고 귀가."
+    };
+    const lines = course.stops.map(function (s, i) {
+      let t = (i + 1) + ". '" + s.name + "'" + (ACT[s.slot] || '.');
+      if (s.ai) t += ' (AI 추천 장소 — 게시 전 확인)';
+      return t;
+    });
+    return '목적지 정해지면 코스부터 짜는 파워J가\n'
+      + HOOK[course.purpose] + ' ' + course.region.name + ' 코스 딱 짜드림.\n'
+      + '(광고 협찬 절대 아님)\n\n'
+      + lines.join('\n')
+      + '\n\n앞으로 짜줄 코스가 무궁무진 너무 많다.\n'
+      + '(+) 팔로우 해두면 이제 주말에 뭐할지 고민할일 없음.';
+  }
+
+  function updateCount() {
+    const n = document.getElementById('draftText').value.length;
+    const el = document.getElementById('charCount');
+    el.textContent = n + '자 / 스레드 500자';
+    el.className = 'count' + (n > 500 ? ' over' : '');
+  }
+  document.getElementById('draftText').addEventListener('input', updateCount);
+
+  document.getElementById('go').addEventListener('click', function () { render(buildCourse()); });
+  document.getElementById('redo').addEventListener('click', function () { render(buildCourse()); });
+
+  document.getElementById('copyBtn').addEventListener('click', function () {
+    const ta = document.getElementById('draftText');
+    const done = function () {
+      const b = document.getElementById('copyBtn');
+      b.textContent = '복사됨 🚩';
+      setTimeout(function () { b.textContent = '초안 복사'; }, 1400);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(ta.value).then(done);
+    } else { ta.select(); document.execCommand('copy'); done(); }
+  });
+})();
+</script>
+</body>
+</html>
