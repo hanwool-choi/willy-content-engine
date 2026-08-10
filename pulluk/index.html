@@ -271,7 +271,11 @@
 <div class="wrap">
   <aside class="rail" aria-label="코스 조건">
     <div class="field">
-      <label class="tag" for="region">지역</label>
+      <label class="tag" for="sido">시/도</label>
+      <select id="sido"></select>
+    </div>
+    <div class="field">
+      <label class="tag" for="region">세부 지역</label>
       <select id="region"></select>
     </div>
     <div class="field">
@@ -358,14 +362,34 @@
   document.getElementById('totalCount').textContent = D.places.length.toLocaleString();
   document.getElementById('stamp').textContent = '데이터 ' + D.generatedAt + ' · 장소 ' + D.places.length.toLocaleString() + '곳 · 지역 ' + D.regions.length + '곳';
 
-  // 지역 셀렉트
+  // 지역 셀렉트: 시/도 → 세부 지역 2단계
   const regionSel = document.getElementById('region');
-  D.regions.forEach(function (r, i) {
-    const o = document.createElement('option');
-    o.value = i;
-    o.textContent = r.name + ' (' + r.count + ')';
-    regionSel.appendChild(o);
+  const sidoSel = document.getElementById('sido');
+  const sidos = [];
+  D.regions.forEach(function (r) {
+    // regions는 장소 수 내림차순이라 시/도도 큰 동네 순으로 쌓인다
+    if (sidos.indexOf(r.sido || '기타') < 0) sidos.push(r.sido || '기타');
   });
+  sidos.forEach(function (s) {
+    const o = document.createElement('option');
+    o.value = s;
+    o.textContent = s;
+    sidoSel.appendChild(o);
+  });
+  function fillRegions() {
+    regionSel.innerHTML = '';
+    D.regions.forEach(function (r, i) {
+      if ((r.sido || '기타') !== sidoSel.value) return;
+      const o = document.createElement('option');
+      o.value = i;
+      // 시/도가 위 단계에 있으니 지역명의 "부산 " 같은 접두어는 뺀다
+      const short = r.name.indexOf(r.sido + ' ') === 0 ? r.name.slice(r.sido.length + 1) : r.name;
+      o.textContent = short + ' (' + r.count + ')';
+      regionSel.appendChild(o);
+    });
+  }
+  sidoSel.addEventListener('change', fillRegions);
+  fillRegions();
 
   // 세그먼트 버튼
   function segInit(id) {
