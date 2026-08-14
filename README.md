@@ -205,6 +205,7 @@ python tools/pulluk_course.py --list                  # 등록된 지역
 python tools/pulluk_course.py --region paju           # 코스 초안 출력
 python tools/pulluk_course.py --region ganghwa --refresh --out drafts/ganghwa.md
 python tools/pulluk_favorites.py --addr 성수          # 즐겨찾기 목록만 훑기
+python tools/pulluk_search.py 순대국 --folder 식당    # 메뉴로 모아보기
 ```
 
 동작:
@@ -224,6 +225,22 @@ python tools/pulluk_favorites.py --addr 성수          # 즐겨찾기 목록만
 지어내지 않는다. 후보가 없는 슬롯도 숨기지 않고 빈 칸으로 드러낸다.
 
 지역을 늘리려면 `src/willy/pulluk/regions.py`의 `REGIONS`에 한 줄 추가한다.
+
+### 메뉴로 모아보기
+
+코스가 아니라 "순대국집만" 같은 저장형 리스트를 뽑을 때는 `pulluk_search.py`를 쓴다.
+
+```bash
+python tools/pulluk_search.py 순대국 --folder 식당     # 식당 폴더에서만
+python tools/pulluk_search.py 순대국 --area            # 지역별로 묶어서
+```
+
+상호뿐 아니라 **네이버 분류까지 같이 본다**. 분류만 `순댓국`이고 상호에는 메뉴가
+없는 집(`역전회관` 같은)을 상호만 보면 놓치기 때문이다.
+
+한글 부분문자열 검색은 사이시옷에서 샌다 — **`순댓국`에는 `순대`가 들어 있지 않다**
+(순/댓/국). 표기 변형은 `search.py`의 `TERM_ALIASES`가 펼쳐 준다. 새 메뉴에서
+같은 문제가 생기면 거기에 한 줄 추가하면 된다.
 
 ## 테스트
 

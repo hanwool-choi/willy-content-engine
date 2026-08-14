@@ -7,6 +7,7 @@ from willy.pulluk.favorites import fetch_favorites, load_favorites
 from willy.pulluk.models import Course, Place, SlotPick, SlotSpec
 from willy.pulluk.regions import COURSE_SPECS, INDOOR_DRIVE_SLOTS, REGIONS, Region
 from willy.pulluk.render import render_all, render_briefing, render_worksheet
+from willy.pulluk.search import expand_terms, group_by_area, search_places
 
 __all__ = [
     "COURSE_SPECS",
@@ -19,9 +20,12 @@ __all__ = [
     "SlotSpec",
     "build_course",
     "candidates",
+    "expand_terms",
     "fetch_favorites",
+    "group_by_area",
     "load_favorites",
     "render_all",
     "render_briefing",
     "render_worksheet",
+    "search_places",
 ]
