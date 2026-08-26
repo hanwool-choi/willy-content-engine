@@ -8,6 +8,7 @@ Gemini가 채널 말투로 쓰고, 죽으면 템플릿이 대신 쓴다. 어느 
 from __future__ import annotations
 
 import json
+import sys
 import time
 from pathlib import Path
 
@@ -54,7 +55,8 @@ def deep_dive_block(place: dict) -> str:
     if not place:
         return ""
     detail = place.get("d") or {}
-    lines = [f"■ 오늘의 집중분석 — {place.get('name', '')}({dong_of(place.get('addr', ''))})"]
+    label = place.get("label") or dong_of(place.get("addr", ""))
+    lines = [f"■ 오늘의 집중분석 — {place.get('name', '')}({label})"]
     lines.append(f"  주소: {place.get('addr', '')}")
     if category_of(place):
         lines.append(f"  업종: {category_of(place)}")
@@ -79,7 +81,7 @@ def template_draft(plan: TopicPlan) -> str:
         head = ("목적지 정해지면 코스부터 짜는 파워J가\n"
                 f"{plan.topic} 코스 딱 짜드림.\n(광고 협찬 절대 아님)")
         body = "\n".join(
-            f"{i}. 🚩{p['name']}({dong_of(p.get('addr', ''))})\n{one_liner(p)}"
+            f"{i}. 🚩{p['name']}({p.get('label') or dong_of(p.get('addr', ''))})\n{one_liner(p)}"
             for i, p in enumerate(plan.places, 1)
         )
         return f"{head}\n\n{body}\n\n{CLOSING_COURSE}"
@@ -87,7 +89,7 @@ def template_draft(plan: TopicPlan) -> str:
     label = plan.topic.split(",")[0]
     head = f"내 기준 수도권 {label} 탑티어 족보 정리해봄.\n*광고/협찬 아님"
     body = "\n".join(
-        f"{i}. {p['name']}({dong_of(p.get('addr', ''))}) : {one_liner(p)}"
+        f"{i}. {p['name']}({p.get('label') or dong_of(p.get('addr', ''))}) : {one_liner(p)}"
         for i, p in enumerate(plan.places, 1)
     )
     return f"{head}\n\n{body}\n\n{CLOSING_ROSTER.format(topic=label)}"
@@ -95,7 +97,8 @@ def template_draft(plan: TopicPlan) -> str:
 
 def build_prompt(plan: TopicPlan, styles: list[str]) -> str:
     facts = "\n".join(
-        f"- {p['name']} / {dong_of(p.get('addr', ''))} / {category_of(p) or '업종 미상'}"
+        f"- {p['name']} / {p.get('label') or dong_of(p.get('addr', ''))}"
+        f" / {category_of(p) or '업종 미상'}"
         f" / 리뷰 {review_of(p):,} / {(p.get('d') or {}).get('h') or '영업정보 없음'}"
         for p in plan.places
     )
@@ -122,7 +125,9 @@ def gemini_draft(plan: TopicPlan, api_key: str | None, generate=None,
     if generate is None:
         try:
             from willy.analyzer import gemini_generate
-        except ImportError:
+        except ImportError as exc:
+            # CI에 의존성이 빠지면 매일 조용히 템플릿으로 떨어진다. 이유를 남긴다.
+            print(f"Gemini 초안 실패({type(exc).__name__}) — 템플릿으로 대체", file=sys.stderr)
             return None
         generate = gemini_generate
 
@@ -131,7 +136,8 @@ def gemini_draft(plan: TopicPlan, api_key: str | None, generate=None,
     client = http or httpx.Client(timeout=60.0)
     try:
         text = generate(client, api_key, payload, sleep)
-    except Exception:
+    except Exception as exc:
+        print(f"Gemini 초안 실패({type(exc).__name__}) — 템플릿으로 대체", file=sys.stderr)
         return None
     finally:
         if http is None:

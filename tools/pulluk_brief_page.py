@@ -62,7 +62,8 @@ def render_brief(plan: TopicPlan, draft: str, checks: list[str], day: date, sour
     places_html = "".join(
         f"<li><a href=\"https://map.naver.com/p/entry/place/{escape(str(p.get('sid', '')))}\""
         " target=\"_blank\" rel=\"noopener\">"
-        f"{escape(p.get('name', ''))}</a> · {escape(dong_of(p.get('addr', '')))}"
+        f"{escape(p.get('name', ''))}</a>"
+        f" · {escape(p.get('label') or dong_of(p.get('addr', '')))}"
         f" · {escape(str((p.get('d') or {}).get('c') or ''))}</li>"
         for p in plan.places
     ) or "<li>선정된 장소가 없습니다</li>"

@@ -42,6 +42,11 @@ MIN_ROSTER = 5
 MAX_ROSTER = 6
 MIN_COURSE_STOPS = 3
 
+# 토요일 "근교 드라이브"는 당일 왕복권이라는 게 설계 전제다. 서울 밖이면
+# 무조건 드라이브로 치면 부산·경주까지 후보에 들어온다.
+SEOUL_CENTER = (37.5665, 126.9780)
+DRIVE_MAX_KM = 100.0
+
 
 @dataclass
 class TopicPlan:
@@ -108,6 +113,21 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * 6371.0 * math.asin(math.sqrt(a))
 
 
+def label_of(place: dict, regions: list[dict]) -> str:
+    """장소를 부를 동네 이름. data.js의 통용 지명(regions)을 우선 쓰고 없으면 주소에서 뽑는다.
+
+    주소에서 뽑은 토큰은 도로명("효령로")이 되는 경우가 많아 채널 말투와 안 맞는다.
+    """
+    best, best_km = None, None
+    for region in regions:
+        km = haversine_km(region["lat"], region["lon"], place["lat"], place["lon"])
+        if km <= region.get("radius", 1.4) + 0.6 and (best_km is None or km < best_km):
+            best, best_km = region, km
+    if best:
+        return best["name"].split("·")[0]
+    return dong_of(place.get("addr", ""))
+
+
 def pick_roster(data: dict, archive: list[dict], today: date, rainy: bool) -> TopicPlan | None:
     """카테고리 족보. 최근 안 쓴 업종 중 리뷰 총량이 두꺼운 쪽을 고른다."""
     used_topics = recent_topics(archive, today)
@@ -154,6 +174,11 @@ def pick_course(data: dict, archive: list[dict], today: date, rainy: bool,
 
     regions = [r for r in data.get("regions", []) if r.get("name") not in used_topics]
     regions = [r for r in regions if (r.get("sido") != "서울") == drive]
+    if drive:
+        # 서울 밖이라고 다 드라이브가 아니다. 아침에 나가 저녁에 돌아올 거리만 남긴다.
+        regions = [r for r in regions
+                   if haversine_km(SEOUL_CENTER[0], SEOUL_CENTER[1],
+                                   r["lat"], r["lon"]) <= DRIVE_MAX_KM]
     regions.sort(key=lambda r: -r.get("count", 0))
 
     for region in regions:
@@ -250,9 +275,13 @@ def plan_for(data: dict, archive: list[dict], today: date, rainy: bool) -> Topic
             plan = pick_variety(data, archive, today, rainy)
         if plan is not None:
             if kind != wanted:
-                extra = f"{wanted} 소재가 부족해 {kind}으로 대체함"
+                extra = f"{wanted} 소재가 부족해 {kind} 유형으로 대체함"
                 plan.note = f"{plan.note} / {extra}" if plan.note else extra
             plan.deep = pick_deep(plan, archive, today)
+            # 표시용 동네 이름은 여기서 한 번만 채워, 문구·페이지가 각자 계산하지 않게 한다.
+            regions = data.get("regions", [])
+            for place in list(plan.places) + ([plan.deep] if plan.deep else []):
+                place["label"] = label_of(place, regions)
             return plan
 
     return TopicPlan(kind=wanted, topic="소재 부족", title="오늘은 소재가 부족합니다",

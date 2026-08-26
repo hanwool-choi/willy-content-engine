@@ -31,3 +31,12 @@ def test_render_index_lists_dates_newest_first():
                {"date": "2026-08-26", "title": "오늘 것", "kind": "족보"}]
     html = render_index(archive)
     assert html.index("2026-08-26") < html.index("2026-08-25")
+
+
+def test_render_brief_uses_label_when_present():
+    plan = _plan()
+    plan.places[0]["label"] = "강남"
+    html = render_brief(plan, "초안", [], date(2026, 8, 26), "template")
+    # 목록의 동네 자리가 label로 바뀌었는지만 본다(집중분석 주소에는 원문이 남는다).
+    assert "칼국수집</a> · 강남" in html
+    assert "· 서초동 ·" not in html

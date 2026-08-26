@@ -1,5 +1,12 @@
 from tools.pulluk_brief_core import TopicPlan
-from tools.pulluk_brief_text import checklist, compose, one_liner, template_draft
+from tools.pulluk_brief_text import (
+    checklist,
+    compose,
+    deep_dive_block,
+    gemini_draft,
+    one_liner,
+    template_draft,
+)
 
 
 def _place(name, **detail):
@@ -66,3 +73,26 @@ def test_checklist_mentions_verification():
     checks = checklist(_roster_plan())
     assert any("※확인" in c or "한줄평" in c for c in checks)
     assert any("가격" in c or "영업" in c for c in checks)
+
+
+def test_template_draft_prefers_label_over_road_name():
+    plan = _roster_plan()
+    plan.places[0]["label"] = "강남"
+    draft = template_draft(plan)
+    assert "1. 집0(강남)" in draft
+    assert "1. 집0(서초동)" not in draft
+
+
+def test_deep_dive_block_prefers_label():
+    place = _place("농민백암순대")
+    place["label"] = "강남"
+    assert "농민백암순대(강남)" in deep_dive_block(place)
+
+
+def test_gemini_draft_logs_reason_when_call_fails(capsys):
+    def broken(http, api_key, payload, sleep):
+        raise RuntimeError("429")
+
+    assert gemini_draft(_roster_plan(), "key", generate=broken) is None
+    err = capsys.readouterr().err
+    assert "Gemini 초안 실패(RuntimeError)" in err

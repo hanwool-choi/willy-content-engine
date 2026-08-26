@@ -5,6 +5,8 @@ from tools.pulluk_brief_core import (
     TopicPlan,
     dong_of,
     is_outdoor,
+    label_of,
+    pick_course,
     pick_deep,
     plan_for,
     recent_topics,
@@ -74,3 +76,58 @@ def test_plan_always_returns_something():
     plan = plan_for({"places": [], "regions": []}, [], date(2026, 8, 24), rainy=False)
     assert plan.places == []
     assert plan.note
+
+
+def _drive_data():
+    """부산(원거리)과 수원(근교) 두 후보를 같이 담은 데이터."""
+    busan, suwon = (35.1796, 129.0756), (37.2636, 127.0286)
+    places = []
+    for tag, (lat, lon) in (("부산", busan), ("수원", suwon)):
+        places += [
+            _place(f"{tag}밥집", lat=lat, lon=lon, addr=f"{tag} 어딘가 어딘동 1"),
+            _place(f"{tag}카페", cat="카페", c="카페", lat=lat + 0.002, lon=lon,
+                   addr=f"{tag} 어딘가 어딘동 2"),
+            _place(f"{tag}스팟", cat="스팟", c="쇼핑", lat=lat, lon=lon + 0.002,
+                   addr=f"{tag} 어딘가 어딘동 3"),
+        ]
+    regions = [
+        {"name": "해운대·부산", "sido": "부산", "lat": busan[0], "lon": busan[1],
+         "radius": 1.4, "count": 99},
+        {"name": "행궁동·수원", "sido": "경기", "lat": suwon[0], "lon": suwon[1],
+         "radius": 1.4, "count": 3},
+    ]
+    return {"places": places, "regions": regions}
+
+
+def test_drive_course_skips_regions_beyond_day_trip_range():
+    # 후보 수는 부산이 훨씬 많지만 당일 왕복권이 아니라 빠져야 한다.
+    plan = pick_course(_drive_data(), [], date(2026, 8, 29), rainy=False, drive=True)
+    assert plan is not None
+    assert plan.topic == "행궁동·수원"
+    assert all("부산" not in p["name"] for p in plan.places)
+
+
+def test_label_of_uses_region_name_when_inside():
+    regions = [{"name": "성수·서울숲", "lat": 37.5435, "lon": 127.048, "radius": 1.4}]
+    inside = _place("성수식당", lat=37.5440, lon=127.049, addr="서울 성동구 성수동1가 1")
+    assert label_of(inside, regions) == "성수"
+
+
+def test_label_of_falls_back_to_dong_outside_regions():
+    regions = [{"name": "성수·서울숲", "lat": 37.5435, "lon": 127.048, "radius": 1.4}]
+    outside = _place("서초카페", lat=37.4848, lon=127.0237,
+                     addr="서울 서초구 효령로70길 36-27")
+    # regions 밖이라 주소 토큰(도로명)으로 떨어진다 — 폴백이 살아 있는지만 본다.
+    assert label_of(outside, regions) == dong_of("서울 서초구 효령로70길 36-27")
+
+
+def test_plan_for_fills_label_on_places_and_deep():
+    plan = plan_for(_data(), [], date(2026, 8, 25), rainy=False)  # 화요일 → 코스
+    assert plan.places and all(p.get("label") for p in plan.places)
+    assert plan.deep is not None and plan.deep.get("label") == "성수"
+
+
+def test_fallback_note_uses_correct_particle():
+    # 토요일(드라이브)인데 서울 region뿐이라 족보로 대체된다.
+    plan = plan_for(_data(), [], date(2026, 8, 29), rainy=False)
+    assert "드라이브 소재가 부족해 족보 유형으로 대체함" in plan.note
