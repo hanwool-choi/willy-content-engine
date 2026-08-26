@@ -14,3 +14,6 @@ archive/
 .claude/launch.json
 .demo_cache/
 site/
+
+# 카카오 리프레시 토큰 회전 시 생기는 임시 파일. 절대 커밋하면 안 된다.
+new_refresh_token.txt
