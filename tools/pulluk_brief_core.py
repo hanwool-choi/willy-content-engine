@@ -60,10 +60,19 @@ class TopicPlan:
 
 
 def dong_of(addr: str) -> str:
-    """주소에서 동네 토큰을 뽑는다. "서울 성동구 성수동1가 668-79" → "성수동"."""
+    """장소를 부를 동네 이름을 주소에서 뽑는다.
+
+    도로명 주소는 세 번째 토큰이 "효령로67길"처럼 나와 채널 말투와 안 맞는다.
+    그럴 때는 시·군·구 토큰("속초시" → "속초")으로 물러선다.
+    """
     parts = (addr or "").split()
-    token = parts[2] if len(parts) > 2 else (parts[1] if len(parts) > 1 else "")
-    return re.sub(r"\d.*$", "", token)
+    if not parts:
+        return ""
+    town = re.sub(r"\d.*$", "", parts[2]) if len(parts) > 2 else ""
+    if town and not town.endswith(("로", "길")):
+        return town
+    city = re.sub(r"\d.*$", "", parts[1]) if len(parts) > 1 else ""
+    return re.sub(r"(특별자치)?[시군구]$", "", city) or town
 
 
 def category_of(place: dict) -> str:

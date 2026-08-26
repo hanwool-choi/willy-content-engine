@@ -37,6 +37,13 @@ def test_dong_of_strips_numbers():
     assert dong_of("서울 성동구 성수동1가 668-79") == "성수동"
 
 
+def test_dong_of_falls_back_to_city_for_road_address():
+    # 도로명이 나오면 채널 말투와 안 맞으니 시·군 이름으로 물러선다
+    assert dong_of("강원 속초시 원문로 123") == "속초"
+    assert dong_of("서울 서초구 효령로67길 71-13") == "서초"
+    assert dong_of("인천 강화군 대포항희망길 5") == "강화"
+
+
 def test_is_outdoor_detects_park_only():
     assert is_outdoor(_place("서울숲공원", cat="스팟")) is True
     assert is_outdoor(_place("성수편집숍", cat="스팟")) is False
