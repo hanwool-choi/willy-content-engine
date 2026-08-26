@@ -57,8 +57,11 @@ jobs:
 
       # 카카오는 리프레시 토큰 잔여 1개월 미만일 때만 새 토큰을 준다.
       # 그때 시크릿을 갱신하지 않으면 2개월 뒤 전송이 끊긴다.
+      # 전송이 실패해도 회전된 토큰은 반드시 시크릿에 반영해야 한다.
+      # always()가 없으면 앞 스텝 실패 시 이 스텝이 스킵돼 새 토큰이 유실되고,
+      # 카카오는 이미 구 토큰을 무효화했기 때문에 다음 날부터 영구 실패한다.
       - name: 리프레시 토큰 회전
-        if: ${{ hashFiles('new_refresh_token.txt') != '' }}
+        if: ${{ always() && hashFiles('new_refresh_token.txt') != '' }}
         env:
           GH_TOKEN: ${{ secrets.GH_PAT_SECRETS }}
         run: gh secret set KAKAO_REFRESH_TOKEN < new_refresh_token.txt

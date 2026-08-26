@@ -96,7 +96,8 @@ def today_rainy(day: date) -> bool:
 
         forecast = WeatherClient(key).get_week_forecast(day, days=1)
         return bool(forecast and forecast[0].is_rainy)
-    except Exception:
+    except Exception as exc:
+        print(f"날씨 조회 실패({type(exc).__name__}) — 로테이션 그대로 진행", file=sys.stderr)
         return False
 
 
