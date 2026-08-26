@@ -81,9 +81,8 @@ def _within(entry_date: str, today: date, days: int) -> bool:
         parsed = datetime.strptime(entry_date, "%Y-%m-%d").date()
     except (ValueError, TypeError):
         return False
-    # 과거 days일과 미래 days일을 모두 포함한다. 이미 계획한 주제와 중복을 피한다.
-    delta = (today - parsed).days
-    return -days <= delta <= days
+    # 아카이브는 발행 이력이라 미래 날짜가 있을 수 없다. 과거 방향으로만 센다.
+    return 0 <= (today - parsed).days <= days
 
 
 def recent_topics(archive: list[dict], today: date, days: int = TOPIC_DAYS) -> set[str]:

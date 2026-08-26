@@ -49,7 +49,7 @@ def test_recent_topics_excludes_old_entries():
 
 
 def test_roster_skips_recently_used_topic():
-    archive = [{"date": "2026-08-25", "topic": "칼국수", "places": []}]
+    archive = [{"date": "2026-08-20", "topic": "칼국수", "places": []}]
     plan = plan_for(_data(), archive, date(2026, 8, 24), rainy=False)  # 월요일 → 족보
     assert plan.kind == "족보"
     assert plan.topic != "칼국수"
