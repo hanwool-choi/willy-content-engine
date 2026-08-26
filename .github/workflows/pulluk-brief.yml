@@ -1,0 +1,65 @@
+# .github/workflows/pulluk-brief.yml
+name: 펄럭 데일리 브리핑
+
+# 매일 09:00 KST. 즐겨찾기 갱신(06:20)이 끝난 뒤라 최신 데이터를 쓴다.
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+# 데일리 보드·스튜디오와 gh-pages 푸시가 겹치지 않게 한다.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 의존성 설치
+        run: pip install httpx truststore
+
+      - name: 브리핑 생성 및 카톡 전송
+        env:
+          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          KMA_SERVICE_KEY: ${{ secrets.KMA_SERVICE_KEY }}
+        run: python tools/pulluk_brief.py --out out_brief
+
+      # 카카오는 리프레시 토큰 잔여 1개월 미만일 때만 새 토큰을 준다.
+      # 그때 시크릿을 갱신하지 않으면 2개월 뒤 전송이 끊긴다.
+      - name: 리프레시 토큰 회전
+        if: ${{ hashFiles('new_refresh_token.txt') != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT_SECRETS }}
+        run: gh secret set KAKAO_REFRESH_TOKEN < new_refresh_token.txt
+
+      - name: gh-pages /brief 게시
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: out_brief
+          destination_dir: brief
+          publish_branch: gh-pages
+          keep_files: true
+          commit_message: "publish: 데일리 브리핑"
+
+      - name: 실패 알림 이슈
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "데일리 브리핑 실패 ($(date -u +%Y-%m-%d))" \
+            --body "워크플로 실행이 실패했습니다. 카카오 토큰 만료(KOE322)일 수 있으니 tools/kakao_token_setup.py로 재발급 후 KAKAO_REFRESH_TOKEN 시크릿을 갱신하세요. 로그: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
