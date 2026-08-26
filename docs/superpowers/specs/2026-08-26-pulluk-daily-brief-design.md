@@ -135,8 +135,10 @@ assets/pulluk/style_examples.json   # 신규 — 채널 실게시물 말투 예�
 카카오 로그인이 필요하므로 사용자가 직접 수행한다 (자격증명은 Claude가 다루지 않는다).
 1. developers.kakao.com 앱 생성 → REST API 키 확보
 2. 카카오 로그인 활성화 + Redirect URI 등록 + `talk_message` 동의항목 설정
-3. `python tools/kakao_token_setup.py` 실행 → 브라우저 인증 → refresh token 출력
-4. GitHub Secrets에 등록
+3. `C:\venvs\willy\Scripts\python.exe tools/kakao_token_setup.py --rest-key <REST_API_KEY>` 실행
+   → 출력된 주소로 로그인·동의 → 주소창의 `code=` 값 붙여넣기 → refresh token 출력
+4. GitHub Secrets 등록: `KAKAO_REST_API_KEY`, `KAKAO_REFRESH_TOKEN`,
+   그리고 토큰 자동 회전용 `GH_PAT_SECRETS` (fine-grained PAT, 이 저장소의 Secrets 쓰기 권한)
 
 ## 11. 실패 모드와 폴백
 
