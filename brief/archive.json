@@ -1,5 +1,18 @@
 [
  {
+  "date": "2026-10-06",
+  "kind": "코스",
+  "topic": "양재·매봉",
+  "title": "양재·매봉 하루 코스",
+  "places": [
+   "임병주산동칼국수",
+   "서초커피작업실Gilmajoong gil",
+   "양재순대"
+  ],
+  "deep": "서초커피작업실Gilmajoong gil",
+  "source": "ai"
+ },
+ {
   "date": "2026-10-05",
   "kind": "족보",
   "topic": "생선회",
