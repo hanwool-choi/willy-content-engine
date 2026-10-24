@@ -1,5 +1,14 @@
 [
  {
+  "date": "2026-10-24",
+  "kind": "드라이브",
+  "topic": "소재 부족",
+  "title": "오늘은 소재가 부족합니다",
+  "places": [],
+  "deep": null,
+  "source": "template"
+ },
+ {
   "date": "2026-10-23",
   "kind": "족보",
   "topic": "소재 부족",
