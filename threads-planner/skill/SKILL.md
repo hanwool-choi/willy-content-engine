@@ -43,7 +43,9 @@ python ~/.claude/skills/willy-threads-planner/scripts/willy.py analyze posts.jso
    aside exec --account u0 --json --timeout 9m "<카테고리별 후보> 각각의 공식 판매처 상품 URL, 현재 판매가, 대표 이미지 원본 URL(흰 배경 누끼 우선)을 조사해 JSON 배열 [{category, product, brand, price_krw, page_url, image_url, note}]로만 답해. 품절·단종이면 대체안."
    ```
    결과를 `products.json`으로 저장한다. 이미지를 내려받아 **눈으로 확인**한다. 모델 착용컷, 텍스트가 박힌 배너, 다른 색상이면 교체한다.
-4. 본문 작성: `references/channel-analysis.md` §3 톤앤매너와 §4 포맷을 그대로 따른다.
+4. 본문 작성: `references/channel-analysis.md` §3 톤앤매너와 §4 포맷을 따른다. **§5 운영자 편집 패턴을 가장 우선한다.**
+   - 지난 임시저장본이 게시됐다면 게시본과 초안을 비교해서 §5에 누적한 뒤 쓴다.
+   - 게시되면 임시저장 목록에서 빠진다. 숫자가 줄었다면 프로필 최신 글을 먼저 확인한다.
    - 지켜야 할 것: 반말 단정형에 '함니다/슴니다' 섞기, `※ 업체에 어떠한 대가도 받지 않음.`, `카테고리 : 브랜드 제품명` 줄, 댓글 추천 CTA와 팔로우 CTA.
    - **경험 사실을 지어내지 않는다.** "3개째 재구매", "여사친 검수" 같은 개인 경험 문장은 사용자가 확인해 준 경우에만 쓴다. 근거 없는 효능이나 수치도 쓰지 않는다.
    - Threads 한도는 500자다. 보통 300~400자에서 끝낸다.
